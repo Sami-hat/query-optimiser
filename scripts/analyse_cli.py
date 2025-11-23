@@ -1,6 +1,3 @@
-"""
-CLI tool for analysing queries and getting index recommendations.
-"""
 import sys
 from pathlib import Path
 
@@ -13,7 +10,7 @@ from src.recommender import IndexRecommender
 
 
 def analyze_single_query(query: str):
-    """Analyse a single query and print recommendations."""
+    """Analysing single queries and printing recommendations"""
     print("\n" + "="*70)
     print("QUERY ANALYSIS")
     print("="*70)
@@ -24,11 +21,11 @@ def analyze_single_query(query: str):
 
     try:
         # Get EXPLAIN plan
-        print("[1/4] Executing EXPLAIN ANALYSE...")
+        print("Executing EXPLAIN ANALYSE")
         explain_output = connector.get_explain_plan(query)
 
         # Extract metrics
-        print("[2/4] Extracting execution metrics...")
+        print("Extracting execution metrics")
         metrics = connector.extract_execution_metrics(explain_output)
 
         print(f"\nExecution Metrics:")
@@ -39,7 +36,7 @@ def analyze_single_query(query: str):
         print(f"  Node Type:       {metrics['node_type']}")
 
         # Detect sequential scans
-        print("\n[3/4] Detecting sequential scans...")
+        print("\nDetecting sequential scans")
         seq_scans = connector.detect_sequential_scans(explain_output)
 
         if seq_scans:
@@ -58,7 +55,7 @@ def analyze_single_query(query: str):
             print("\n  No sequential scans detected (query is using indexes)")
 
         # Get index recommendations
-        print("\n[4/4] Generating index recommendations...")
+        print("\nGenerating index recommendations")
         recommender = IndexRecommender(connector)
         recommendations = recommender.analyse_query(query, explain_output)
 

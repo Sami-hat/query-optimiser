@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PostgreSQL Performance Analyser</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>PostgreSQL Performance Analyser</h1>
+            <div class="status-indicator" id="status">
+                <span class="status-dot"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+        </header>
+
+        <main>
+            <!-- Query Input Section -->
+            <section class="query-section">
+                <h2>Analyse Query</h2>
+                <div class="query-input-wrapper">
+                    <textarea id="query-input" placeholder="Enter your SQL query here...
+Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
+                    <div class="query-controls">
+                        <button id="analyse-btn" class="btn primary">Analyse Query</button>
+                        <button id="clear-btn" class="btn secondary">Clear</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section" id="results-section" style="display: none;">
+                <!-- Metrics Cards -->
+                <div class="metrics-row">
+                    <div class="metric-card">
+                        <div class="metric-value" id="exec-time">-</div>
+                        <div class="metric-label">Execution Time (ms)</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="total-cost">-</div>
+                        <div class="metric-label">Total Cost</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="rows-returned">-</div>
+                        <div class="metric-label">Rows Returned</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="seq-scans">-</div>
+                        <div class="metric-label">Sequential Scans</div>
+                    </div>
+                </div>
+
+                <!-- Flame Graph -->
+                <div class="visualization-container">
+                    <h3>Execution Plan (Flame Graph)</h3>
+                    <div id="flamegraph"></div>
+                </div>
+
+                <!-- Recommendations -->
+                <div class="recommendations-container">
+                    <h3>Index Recommendations</h3>
+                    <div id="recommendations"></div>
+                </div>
+            </section>
+
+            <!-- Tables Overview Section -->
+            <section class="tables-section">
+                <h2>Table Statistics</h2>
+                <div class="tables-controls">
+                    <button id="refresh-tables" class="btn secondary">Refresh</button>
+                </div>
+                <div id="tables-heatmap"></div>
+                <div id="tables-list"></div>
+            </section>
+
+            <!-- Batch Analysis Section -->
+            <section class="batch-section">
+                <h2>Batch Analysis</h2>
+                <div class="batch-input-wrapper">
+                    <textarea id="batch-queries" placeholder="Enter multiple queries (one per line)..."></textarea>
+                    <div class="batch-controls">
+                        <label>
+                            Workers: <input type="number" id="workers" value="10" min="1" max="20">
+                        </label>
+                        <label>
+                            <input type="checkbox" id="filter-existing"> Filter existing indexes
+                        </label>
+                        <button id="batch-analyse-btn" class="btn primary">Analyse Batch</button>
+                    </div>
+                </div>
+                <div id="batch-results" style="display: none;">
+                    <div class="batch-summary" id="batch-summary"></div>
+                    <div class="batch-recommendations" id="batch-recommendations"></div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>PostgreSQL Performance Analyser v1.0.0</p>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p>Analysing...</p>
+    </div>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/flamegraph.js"></script>
+    <script src="/static/js/heatmap.js"></script>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

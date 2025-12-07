@@ -1,6 +1,6 @@
 """
-Setup test database with sample data for testing the performance analyzer.
-Creates tables with realistic data volumes (500K+ rows).
+Setup test database with sample data for testing the performance analyzer
+Creates tables with realistic data volumes (500K+ rows)
 """
 import psycopg2
 import os
@@ -12,7 +12,7 @@ load_dotenv()
 
 
 def create_connection():
-    """Create database connection."""
+    """Create database connection"""
     return psycopg2.connect(
         dbname=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"),
@@ -23,7 +23,7 @@ def create_connection():
 
 
 def setup_tables(conn):
-    """Create test tables."""
+    """Create test tables"""
     cursor = conn.cursor()
 
     print("Creating tables...")
@@ -85,7 +85,7 @@ def setup_tables(conn):
 
 
 def populate_users(conn, num_users=500000):
-    """Populate users table with test data."""
+    """Populate users table with test data"""
     cursor = conn.cursor()
 
     print(f"Populating users table with {num_users} records...")
@@ -121,7 +121,7 @@ def populate_users(conn, num_users=500000):
 
 
 def populate_products(conn, num_products=10000):
-    """Populate products table with test data."""
+    """Populate products table with test data"""
     cursor = conn.cursor()
 
     print(f"Populating products table with {num_products} records...")
@@ -149,7 +149,7 @@ def populate_products(conn, num_products=10000):
 
 
 def populate_orders(conn, num_orders=100000):
-    """Populate orders table with test data."""
+    """Populate orders table with test data"""
     cursor = conn.cursor()
 
     print(f"Populating orders table with {num_orders} records...")
@@ -187,7 +187,7 @@ def populate_orders(conn, num_orders=100000):
 
 
 def create_some_indexes(conn):
-    """Create some indexes (but not all optimal ones) for testing."""
+    """Create some indexes (but not all optimal ones) for testing"""
     cursor = conn.cursor()
 
     print("Creating some initial indexes...")
@@ -201,7 +201,7 @@ def create_some_indexes(conn):
 
 
 def print_table_stats(conn):
-    """Print statistics about created tables."""
+    """Print statistics about created tables"""
     cursor = conn.cursor()
 
     print("\n" + "="*50)
@@ -232,7 +232,7 @@ def print_table_stats(conn):
 
 
 def main():
-    """Main setup function."""
+    """Main setup function"""
     print("\n" + "="*50)
     print("PostgreSQL Performance Analyzer - Test DB Setup")
     print("="*50 + "\n")

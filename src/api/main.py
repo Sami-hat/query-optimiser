@@ -50,7 +50,7 @@ RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "3600"))  # 1 hour
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage application lifecycle."""
+    """Manage application lifecycle"""
     global db_connector, recommender, batch_analyser
 
     # Startup
@@ -95,7 +95,7 @@ if frontend_path.exists():
 
 @app.get("/", include_in_schema=False)
 async def serve_frontend():
-    """Serve the frontend dashboard."""
+    """Serve the frontend dashboard"""
     index_path = frontend_path / "index.html"
     if index_path.exists():
         return FileResponse(str(index_path))
@@ -103,7 +103,7 @@ async def serve_frontend():
 
 
 def get_api_keys() -> list:
-    """Get valid API keys from environment."""
+    """Get valid API keys from environment"""
     keys_str = os.getenv("API_KEYS", "")
     if not keys_str:
         return []
@@ -111,7 +111,7 @@ def get_api_keys() -> list:
 
 
 async def verify_api_key(api_key: str = Security(api_key_header)) -> str:
-    """Verify API key if authentication is enabled."""
+    """Verify API key if authentication is enabled"""
     valid_keys = get_api_keys()
 
     # If no keys configured, allow all requests
@@ -134,7 +134,7 @@ async def verify_api_key(api_key: str = Security(api_key_header)) -> str:
 
 
 async def check_rate_limit(request: Request, api_key: str = Depends(verify_api_key)):
-    """Check rate limit for the API key."""
+    """Check rate limit for the API key"""
     if not get_api_keys():
         return  # Rate limiting disabled if no auth
 
@@ -162,7 +162,7 @@ async def check_rate_limit(request: Request, api_key: str = Depends(verify_api_k
 
 
 def require_db():
-    """Dependency to ensure database is connected."""
+    """Dependency to ensure database is connected"""
     if not db_connector or not db_connector.test_connection():
         raise HTTPException(
             status_code=503,
@@ -174,7 +174,7 @@ def require_db():
 # Health check endpoint (no auth required)
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
-    """Check API and database health."""
+    """Check API and database health"""
     db_connected = False
     if db_connector:
         try:
@@ -250,7 +250,10 @@ async def analyse_query(
                     current_cost=rec.current_cost,
                     estimated_cost=rec.estimated_cost,
                     priority=rec.priority,
-                    ddl=rec.get_ddl()
+                    ddl=rec.get_ddl(),
+                    warning=rec.warning,
+                    partial_index_predicate=rec.partial_index_predicate,
+                    include_columns=rec.include_columns
                 )
                 for rec in recommendations
             ],
@@ -275,9 +278,9 @@ async def batch_analyse(
     db: DatabaseConnector = Depends(require_db)
 ):
     """
-    Analyse multiple SQL queries in batch.
+    Analyse multiple SQL queries in batch
 
-    Processes queries in parallel and returns aggregated recommendations.
+    Processes queries in parallel and returns aggregated recommendations
     """
     try:
         # Create analyser with specified workers
@@ -313,7 +316,10 @@ async def batch_analyse(
                     current_cost=r.current_cost,
                     estimated_cost=r.estimated_cost,
                     priority=r.priority,
-                    ddl=r.get_ddl()
+                    ddl=r.get_ddl(),
+                    warning=r.warning,
+                    partial_index_predicate=r.partial_index_predicate,
+                    include_columns=r.include_columns
                 )
                 for r in filtered
             ]
@@ -355,9 +361,9 @@ async def get_table_recommendations(
     db: DatabaseConnector = Depends(require_db)
 ):
     """
-    Get index recommendations for a specific table.
+    Get index recommendations for a specific table
 
-    Also returns existing indexes on the table.
+    Also returns existing indexes on the table
     """
     try:
         analyser = BatchAnalyser(db)
@@ -396,7 +402,7 @@ async def get_table_recommendations(
 async def get_table_statistics(
     db: DatabaseConnector = Depends(require_db)
 ):
-    """Get statistics for all tables in the database."""
+    """Get statistics for all tables in the database"""
     try:
         analyser = BatchAnalyser(db)
         stats = analyser.get_table_statistics()
@@ -430,9 +436,9 @@ async def apply_indexes(
     db: DatabaseConnector = Depends(require_db)
 ):
     """
-    Apply index recommendations by executing CREATE INDEX statements.
+    Apply index recommendations by executing CREATE INDEX statements
 
-    Use dry_run=true to validate without executing.
+    Use dry_run=true to validate without executing
     """
     results = []
 
@@ -479,7 +485,7 @@ async def apply_indexes(
 # Exception handler for validation errors
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Handle uncaught exceptions."""
+    """Handle uncaught exceptions"""
     return JSONResponse(
         status_code=500,
         content={"error": "Internal server error", "detail": str(exc)}

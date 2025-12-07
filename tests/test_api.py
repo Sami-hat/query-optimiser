@@ -14,10 +14,10 @@ client = TestClient(app)
 
 
 class TestHealthEndpoint:
-    """Tests for health check endpoint."""
+    """Tests for health check endpoint"""
 
     def test_health_check(self):
-        """Health endpoint returns status."""
+        """Health endpoint returns status"""
         response = client.get("/health")
         assert response.status_code == 200
         data = response.json()
@@ -27,12 +27,12 @@ class TestHealthEndpoint:
 
 
 class TestAnalyseEndpoint:
-    """Tests for single query analysis endpoint."""
+    """Tests for single query analysis endpoint"""
 
     @patch('src.api.main.db_connector')
     @patch('src.api.main.recommender')
     def test_analyse_query_success(self, mock_recommender, mock_db):
-        """Test successful query analysis."""
+        """Test successful query analysis"""
         # Setup mocks
         mock_db.test_connection.return_value = True
         mock_db.get_explain_plan.return_value = {
@@ -70,7 +70,7 @@ class TestAnalyseEndpoint:
 
     @patch('src.api.main.db_connector')
     def test_analyse_query_empty(self, mock_db):
-        """Test empty query is rejected."""
+        """Test empty query is rejected"""
         mock_db.test_connection.return_value = True
         response = client.post(
             "/analyse",
@@ -80,7 +80,7 @@ class TestAnalyseEndpoint:
 
     @patch('src.api.main.db_connector')
     def test_analyse_query_missing(self, mock_db):
-        """Test missing query field is rejected."""
+        """Test missing query field is rejected"""
         mock_db.test_connection.return_value = True
         response = client.post(
             "/analyse",
@@ -90,12 +90,12 @@ class TestAnalyseEndpoint:
 
 
 class TestBatchAnalyseEndpoint:
-    """Tests for batch analysis endpoint."""
+    """Tests for batch analysis endpoint"""
 
     @patch('src.api.main.db_connector')
     @patch('src.api.main.BatchAnalyser')
     def test_batch_analyse_success(self, mock_analyser_class, mock_db):
-        """Test successful batch analysis."""
+        """Test successful batch analysis"""
         mock_db.test_connection.return_value = True
 
         # Create mock report
@@ -128,7 +128,7 @@ class TestBatchAnalyseEndpoint:
 
     @patch('src.api.main.db_connector')
     def test_batch_analyse_empty_queries(self, mock_db):
-        """Test empty queries list is rejected."""
+        """Test empty queries list is rejected"""
         mock_db.test_connection.return_value = True
         response = client.post(
             "/batch-analyse",
@@ -138,7 +138,7 @@ class TestBatchAnalyseEndpoint:
 
     @patch('src.api.main.db_connector')
     def test_batch_analyse_max_workers_validation(self, mock_db):
-        """Test max_workers validation."""
+        """Test max_workers validation"""
         mock_db.test_connection.return_value = True
         response = client.post(
             "/batch-analyse",
@@ -148,12 +148,12 @@ class TestBatchAnalyseEndpoint:
 
 
 class TestTablesEndpoint:
-    """Tests for tables statistics endpoint."""
+    """Tests for tables statistics endpoint"""
 
     @patch('src.api.main.db_connector')
     @patch('src.api.main.BatchAnalyser')
     def test_get_tables(self, mock_analyser_class, mock_db):
-        """Test getting table statistics."""
+        """Test getting table statistics"""
         mock_db.test_connection.return_value = True
 
         mock_analyser = Mock()
@@ -179,12 +179,12 @@ class TestTablesEndpoint:
 
 
 class TestRecommendationsEndpoint:
-    """Tests for table recommendations endpoint."""
+    """Tests for table recommendations endpoint"""
 
     @patch('src.api.main.db_connector')
     @patch('src.api.main.BatchAnalyser')
     def test_get_recommendations(self, mock_analyser_class, mock_db):
-        """Test getting recommendations for a table."""
+        """Test getting recommendations for a table"""
         mock_db.test_connection.return_value = True
 
         mock_analyser = Mock()
@@ -207,11 +207,11 @@ class TestRecommendationsEndpoint:
 
 
 class TestApplyIndexesEndpoint:
-    """Tests for apply indexes endpoint."""
+    """Tests for apply indexes endpoint"""
 
     @patch('src.api.main.db_connector')
     def test_apply_indexes_dry_run(self, mock_db):
-        """Test dry run mode."""
+        """Test dry run mode"""
         mock_db.test_connection.return_value = True
 
         response = client.post(
@@ -229,7 +229,7 @@ class TestApplyIndexesEndpoint:
 
     @patch('src.api.main.db_connector')
     def test_apply_indexes_invalid_ddl(self, mock_db):
-        """Test invalid DDL is rejected."""
+        """Test invalid DDL is rejected"""
         mock_db.test_connection.return_value = True
 
         response = client.post(
@@ -247,11 +247,11 @@ class TestApplyIndexesEndpoint:
 
 
 class TestAPIAuthentication:
-    """Tests for API key authentication."""
+    """Tests for API key authentication"""
 
     @patch('src.api.main.get_api_keys')
     def test_no_auth_required_when_no_keys(self, mock_get_keys):
-        """Test requests work when no API keys are configured."""
+        """Test requests work when no API keys are configured"""
         mock_get_keys.return_value = []
 
         response = client.get("/health")
@@ -260,7 +260,7 @@ class TestAPIAuthentication:
     @patch('src.api.main.get_api_keys')
     @patch('src.api.main.db_connector')
     def test_auth_required_when_keys_configured(self, mock_db, mock_get_keys):
-        """Test authentication is required when keys are configured."""
+        """Test authentication is required when keys are configured"""
         mock_get_keys.return_value = ["test-key-123"]
         mock_db.test_connection.return_value = True
 
@@ -275,7 +275,7 @@ class TestAPIAuthentication:
     @patch('src.api.main.db_connector')
     @patch('src.api.main.recommender')
     def test_valid_api_key_works(self, mock_recommender, mock_db, mock_get_keys):
-        """Test valid API key is accepted."""
+        """Test valid API key is accepted"""
         mock_get_keys.return_value = ["test-key-123"]
         mock_db.test_connection.return_value = True
         mock_db.get_explain_plan.return_value = {
@@ -298,10 +298,10 @@ class TestAPIAuthentication:
 
 
 class TestOpenAPIDocumentation:
-    """Tests for API documentation."""
+    """Tests for API documentation"""
 
     def test_openapi_schema(self):
-        """Test OpenAPI schema is available."""
+        """Test OpenAPI schema is available"""
         response = client.get("/openapi.json")
         assert response.status_code == 200
         data = response.json()
@@ -309,6 +309,6 @@ class TestOpenAPIDocumentation:
         assert "paths" in data
 
     def test_swagger_ui(self):
-        """Test Swagger UI is available."""
+        """Test Swagger UI is available"""
         response = client.get("/docs")
         assert response.status_code == 200

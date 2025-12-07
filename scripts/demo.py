@@ -15,14 +15,14 @@ from src.recommender import IndexRecommender
 
 
 def print_header(title):
-    """Print formatted header."""
+    """Print formatted header"""
     print("\n" + "="*80)
     print(f" {title}")
     print("="*80 + "\n")
 
 
 def demo_single_query_optimization():
-    """Demonstrate single query optimization with before/after comparison."""
+    """Demonstrate single query optimization with before/after comparison"""
     print_header("DEMO: Single Query Optimization")
 
     query = "SELECT * FROM users WHERE email = 'user50000@example.com'"
@@ -106,14 +106,14 @@ def demo_single_query_optimization():
             print(f"  Eliminated:  {len(seq_scans_before) - len(seq_scans_after)}")
 
         else:
-            print("\nNo recommendations - query is already optimized!")
+            print("\nNo recommendations - query is already optimial")
 
     finally:
         connector.close()
 
 
 def demo_multiple_queries():
-    """Demonstrate batch analysis of multiple queries."""
+    """Demonstrate batch analysis of multiple queries"""
     print_header("DEMO: Batch Query Analysis")
 
     queries = [
@@ -169,7 +169,7 @@ def demo_multiple_queries():
 
 
 def demo_query_parser():
-    """Demonstrate query parsing capabilities."""
+    """Demonstrate query parsing capabilities"""
     print_header("DEMO: Query Parser (AST Analysis)")
 
     test_queries = [
@@ -193,7 +193,7 @@ def demo_query_parser():
 
 
 def main():
-    """Run all demonstrations."""
+    """Run all demonstrations"""
     print("\n" + "="*80)
     print(" PostgreSQL Performance Analyzer - COMPLETE DEMONSTRATION")
     print("="*80)

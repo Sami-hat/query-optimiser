@@ -15,8 +15,8 @@ load_dotenv()
 
 class DatabaseConnector:
     """
-    Handles PostgreSQL connections and EXPLAIN plan extraction.
-    Uses connection pooling for concurrent queries.
+    Handles PostgreSQL connections and EXPLAIN plan extraction
+    Uses connection pooling for concurrent queries
     """
 
     def __init__(
@@ -30,7 +30,7 @@ class DatabaseConnector:
         pool_max: int = 10
     ):
         """
-        Initialize database connector with connection pooling.
+        Initialize database connector with connection pooling
 
         Args:
             host: Database host (defaults to DB_HOST env var)
@@ -56,7 +56,7 @@ class DatabaseConnector:
         self._initialize_pool()
 
     def _initialize_pool(self):
-        """Initialize the connection pool."""
+        """Initialize the connection pool"""
         try:
             self.connection_pool = psycopg2.pool.ThreadedConnectionPool(
                 self.pool_min,
@@ -73,7 +73,7 @@ class DatabaseConnector:
     @contextmanager
     def get_connection(self):
         """
-        Context manager for getting a connection from the pool.
+        Context manager for getting a connection from the pool
 
         Yields:
             psycopg2 connection object
@@ -88,24 +88,64 @@ class DatabaseConnector:
             if conn:
                 self.connection_pool.putconn(conn)
 
-    def get_explain_plan(self, query: str, analyze: bool = True) -> Dict[str, Any]:
+    def _detect_query_type(self, query: str) -> str:
         """
-        Execute EXPLAIN (ANALYZE) on a query and return JSON output.
+        Detect the type of SQL query
+
+        Args:
+            query: SQL query string
+
+        Returns:
+            Query type: 'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'DDL', or 'UNKNOWN'
+        """
+        query_upper = query.strip().upper()
+
+        if query_upper.startswith('SELECT') or query_upper.startswith('WITH'):
+            return 'SELECT'
+        elif query_upper.startswith('INSERT'):
+            return 'INSERT'
+        elif query_upper.startswith('UPDATE'):
+            return 'UPDATE'
+        elif query_upper.startswith('DELETE'):
+            return 'DELETE'
+        elif any(query_upper.startswith(cmd) for cmd in ['CREATE', 'ALTER', 'DROP', 'TRUNCATE']):
+            return 'DDL'
+        else:
+            return 'UNKNOWN'
+
+    def get_explain_plan(self, query: str, analyze: bool = False, statement_timeout_ms: int = 30000) -> Dict[str, Any]:
+        """
+        Execute EXPLAIN (ANALYZE) on a query and return JSON output
+
+        SAFETY: Defaults to analyze=False to prevent data modification and hanging
+        ANALYZE will only run on SELECT queries and with a statement_timeout
 
         Args:
             query: SQL query to analyze
-            analyze: If True, use EXPLAIN ANALYZE (actually executes query)
+            analyze: If True, use EXPLAIN ANALYZE (actually executes query) - only safe for SELECT
+            statement_timeout_ms: Timeout in milliseconds for EXPLAIN ANALYZE (default: 30000ms = 30s)
 
         Returns:
             Dict containing EXPLAIN plan in JSON format with metadata
 
         Raises:
-            ValueError: If query is empty or invalid
+            ValueError: If query is empty, invalid, or ANALYZE requested on DML query
             ConnectionError: If database connection fails
             RuntimeError: If EXPLAIN execution fails
         """
         if not query or not query.strip():
             raise ValueError("Query cannot be empty")
+
+        # Detect query type for safety
+        query_type = self._detect_query_type(query)
+
+        # Refuse ANALYZE on DML queries to prevent data modification
+        if analyze and query_type in ['INSERT', 'UPDATE', 'DELETE', 'DDL']:
+            raise ValueError(
+                f"EXPLAIN ANALYZE refused for {query_type} query. "
+                f"Use analyze=False to get plan without execution. "
+                f"ANALYZE would modify data or schema."
+            )
 
         # Build EXPLAIN command
         explain_cmd = "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)" if analyze else "EXPLAIN (FORMAT JSON)"
@@ -114,6 +154,10 @@ class DatabaseConnector:
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
+                    # Set statement timeout for ANALYZE to prevent hanging
+                    if analyze:
+                        cursor.execute(f"SET LOCAL statement_timeout = '{statement_timeout_ms}ms'")
+
                     cursor.execute(full_query)
                     result = cursor.fetchone()
 
@@ -123,10 +167,15 @@ class DatabaseConnector:
                     # PostgreSQL returns EXPLAIN as array with single element
                     explain_json = result[0][0] if isinstance(result[0], list) else result[0]
 
+                    # Rollback to ensure ANALYZE doesn't commit any changes
+                    # (This is mostly a safety measure; we already refuse ANALYZE on DML)
+                    conn.rollback()
+
                     return {
                         'query': query,
                         'explain_plan': explain_json,
-                        'analyzed': analyze
+                        'analyzed': analyze,
+                        'query_type': query_type
                     }
 
         except PsycopgError as e:
@@ -134,7 +183,7 @@ class DatabaseConnector:
 
     def extract_execution_metrics(self, explain_output: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Extract key metrics from EXPLAIN plan output.
+        Extract key metrics from EXPLAIN plan output
 
         Args:
             explain_output: Output from get_explain_plan()
@@ -162,7 +211,7 @@ class DatabaseConnector:
 
     def detect_sequential_scans(self, explain_output: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Recursively traverse EXPLAIN plan tree to find all sequential scans.
+        Recursively traverse EXPLAIN plan tree to find all sequential scans
 
         Args:
             explain_output: Output from get_explain_plan()
@@ -178,7 +227,7 @@ class DatabaseConnector:
         sequential_scans = []
 
         def traverse_plan(node: Dict[str, Any]):
-            """Recursively traverse plan tree."""
+            """Recursively traverse plan tree"""
             node_type = node.get('Node Type', '')
 
             # Check if this is a sequential scan
@@ -209,7 +258,7 @@ class DatabaseConnector:
 
     def test_connection(self) -> bool:
         """
-        Test database connection.
+        Test database connection
 
         Returns:
             True if connection successful, False otherwise
@@ -223,7 +272,111 @@ class DatabaseConnector:
         except Exception:
             return False
 
+    def get_column_statistics(self, table_name: str, column_name: str) -> Dict[str, Any]:
+        """
+        Query pg_stats for column statistics to calculate real selectivity
+
+        Args:
+            table_name: Table name
+            column_name: Column name
+
+        Returns:
+            Dict with column statistics:
+                - n_distinct: Number of distinct values (-1 means unique, negative means proportion)
+                - null_frac: Fraction of null values (0-1)
+                - avg_width: Average width in bytes
+                - n_distinct_values: Absolute count of distinct values
+                - most_common_vals: Array of most common values
+                - most_common_freqs: Array of frequencies for most common values
+                - correlation: Statistical correlation (-1 to 1)
+        """
+        sql = """
+            SELECT
+                s.n_distinct,
+                s.null_frac,
+                s.avg_width,
+                s.correlation,
+                c.reltuples::bigint as total_rows,
+                CASE
+                    WHEN s.n_distinct < 0 THEN abs(s.n_distinct * c.reltuples)::bigint
+                    ELSE s.n_distinct::bigint
+                END as n_distinct_values
+            FROM pg_stats s
+            JOIN pg_class c ON c.relname = s.tablename
+            JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = s.schemaname
+            WHERE s.schemaname = 'public'
+              AND s.tablename = %s
+              AND s.attname = %s
+        """
+
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql, (table_name, column_name))
+                    result = cursor.fetchone()
+
+                    if not result:
+                        # Column not found in pg_stats, return defaults
+                        return {
+                            'n_distinct': -1,
+                            'null_frac': 0.0,
+                            'avg_width': 32,
+                            'correlation': 0.0,
+                            'total_rows': 0,
+                            'n_distinct_values': 0,
+                            'has_stats': False
+                        }
+
+                    return {
+                        'n_distinct': result[0] or 0,
+                        'null_frac': result[1] or 0.0,
+                        'avg_width': result[2] or 32,
+                        'correlation': result[3] or 0.0,
+                        'total_rows': result[4] or 0,
+                        'n_distinct_values': result[5] or 0,
+                        'has_stats': True
+                    }
+
+        except Exception as e:
+            # If pg_stats query fails, return defaults
+            return {
+                'n_distinct': -1,
+                'null_frac': 0.0,
+                'avg_width': 32,
+                'correlation': 0.0,
+                'total_rows': 0,
+                'n_distinct_values': 0,
+                'has_stats': False,
+                'error': str(e)
+            }
+
+    def get_table_row_count(self, table_name: str) -> int:
+        """
+        Get estimated row count for a table from pg_class
+
+        Args:
+            table_name: Table name
+
+        Returns:
+            Estimated row count
+        """
+        sql = """
+            SELECT c.reltuples::bigint
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relname = %s
+        """
+
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql, (table_name,))
+                    result = cursor.fetchone()
+                    return result[0] if result else 0
+        except Exception:
+            return 0
+
     def close(self):
-        """Close all connections in the pool."""
+        """Close all connections in the pool"""
         if self.connection_pool:
             self.connection_pool.closeall()

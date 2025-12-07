@@ -2,7 +2,7 @@
 Batch Query Analyser
 
 Analyses production queries from pg_stat_statements and generates
-aggregated recommendations with parallel processing.
+aggregated recommendations with parallel processing
 """
 import json
 import time
@@ -19,7 +19,7 @@ from .recommender import IndexRecommender, IndexRecommendation
 
 @dataclass
 class QueryStats:
-    """Statistics for a single query from pg_stat_statements."""
+    """Statistics for a single query from pg_stat_statements"""
     query: str
     query_id: Optional[str] = None
     calls: int = 0
@@ -33,7 +33,7 @@ class QueryStats:
 
     @property
     def cache_hit_ratio(self) -> float:
-        """Calculate buffer cache hit ratio."""
+        """Calculate buffer cache hit ratio"""
         total = self.shared_blks_hit + self.shared_blks_read
         if total == 0:
             return 1.0
@@ -42,7 +42,7 @@ class QueryStats:
 
 @dataclass
 class AnalysisResult:
-    """Result of analysing a single query."""
+    """Result of analysing a single query"""
     query: str
     query_stats: Optional[QueryStats] = None
     execution_time_ms: float = 0.0
@@ -53,7 +53,7 @@ class AnalysisResult:
     error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialisation."""
+        """Convert to dictionary for JSON serialisation"""
         return {
             'query': self.query,
             'query_stats': asdict(self.query_stats) if self.query_stats else None,
@@ -81,7 +81,7 @@ class AnalysisResult:
 
 @dataclass
 class BatchAnalysisReport:
-    """Aggregated report from batch analysis."""
+    """Aggregated report from batch analysis"""
     timestamp: str
     total_queries: int = 0
     analysed_queries: int = 0
@@ -100,15 +100,15 @@ class BatchAnalysisReport:
     analysis_duration_seconds: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialisation."""
+        """Convert to dictionary for JSON serialisation"""
         return asdict(self)
 
     def to_json(self, indent: int = 2) -> str:
-        """Convert to JSON string."""
+        """Convert to JSON string"""
         return json.dumps(self.to_dict(), indent=indent, default=str)
 
     def get_summary(self) -> str:
-        """Get human-readable summary."""
+        """Get human-readable summary"""
         lines = [
             "=" * 60,
             "BATCH ANALYSIS REPORT",
@@ -171,7 +171,7 @@ class BatchAnalysisReport:
 class BatchAnalyser:
     """
     Analyses multiple queries from pg_stat_statements or provided list,
-    with parallel processing and aggregated reporting.
+    with parallel processing and aggregated reporting
     """
 
     def __init__(
@@ -182,7 +182,7 @@ class BatchAnalyser:
         min_mean_time_ms: float = 100.0
     ):
         """
-        Initialise batch analyser.
+        Initialise batch analyser
 
         Args:
             db_connector: Database connection handler
@@ -197,13 +197,64 @@ class BatchAnalyser:
         self.min_mean_time_ms = min_mean_time_ms
         self._lock = threading.Lock()
 
+    def _detect_pg_stat_statements_columns(self) -> Dict[str, str]:
+        """
+        Detect pg_stat_statements column names based on PostgreSQL version
+
+        PG12 uses: total_time, mean_time, min_time, max_time
+        PG13+ uses: total_exec_time, mean_exec_time, min_exec_time, max_exec_time
+
+        Returns:
+            Dict mapping column types to actual column names
+        """
+        # Check if total_exec_time column exists (PG13+)
+        sql = """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'pg_stat_statements'
+              AND column_name IN ('total_exec_time', 'total_time')
+            LIMIT 1
+        """
+
+        try:
+            with self.db_connector.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql)
+                    result = cur.fetchone()
+
+                    if result and result[0] == 'total_exec_time':
+                        # PG13+ column names
+                        return {
+                            'total': 'total_exec_time',
+                            'mean': 'mean_exec_time',
+                            'min': 'min_exec_time',
+                            'max': 'max_exec_time'
+                        }
+                    else:
+                        # PG12 column names
+                        return {
+                            'total': 'total_time',
+                            'mean': 'mean_time',
+                            'min': 'min_time',
+                            'max': 'max_time'
+                        }
+        except Exception:
+            # Default to PG13+ names
+            return {
+                'total': 'total_exec_time',
+                'mean': 'mean_exec_time',
+                'min': 'min_exec_time',
+                'max': 'max_exec_time'
+            }
+
     def get_queries_from_pg_stat_statements(
         self,
         limit: int = 500,
         exclude_patterns: Optional[List[str]] = None
     ) -> List[QueryStats]:
         """
-        Extract queries from pg_stat_statements extension.
+        Extract queries from pg_stat_statements extension
 
         Args:
             limit: Maximum number of queries to retrieve
@@ -228,23 +279,27 @@ class BatchAnalyser:
             f"query NOT ILIKE '{pattern}'" for pattern in exclude_patterns
         ])
 
+        # Detect pg_stat_statements version (PG12 vs PG13+)
+        # PG12 uses total_time, PG13+ uses total_exec_time
+        time_column = self._detect_pg_stat_statements_columns()
+
         sql = f"""
             SELECT
                 query,
                 queryid::text as query_id,
                 calls,
-                total_exec_time as total_time_ms,
-                mean_exec_time as mean_time_ms,
-                min_exec_time as min_time_ms,
-                max_exec_time as max_time_ms,
+                {time_column['total']} as total_time_ms,
+                {time_column['mean']} as mean_time_ms,
+                {time_column['min']} as min_time_ms,
+                {time_column['max']} as max_time_ms,
                 rows,
                 shared_blks_hit,
                 shared_blks_read
             FROM pg_stat_statements
             WHERE calls >= %s
-              AND mean_exec_time >= %s
+              AND {time_column['mean']} >= %s
               AND {exclusions}
-            ORDER BY total_exec_time DESC
+            ORDER BY {time_column['total']} DESC
             LIMIT %s
         """
 
@@ -284,7 +339,7 @@ class BatchAnalyser:
         query_stats: Optional[QueryStats] = None
     ) -> AnalysisResult:
         """
-        Analyse a single query.
+        Analyse a single query
 
         Args:
             query: SQL query string
@@ -328,15 +383,84 @@ class BatchAnalyser:
         return result
 
     def _replace_placeholders(self, query: str) -> str:
-        """Replace $1, $2 style placeholders with dummy values."""
+        """
+        Replace $1, $2 style placeholders with typed NULL values for EXPLAIN
+
+        Uses type inference heuristics to guess appropriate NULL types:
+        - Numeric context: NULL::integer
+        - Text context: NULL::text
+        - Boolean context: NULL::boolean
+        - Default: NULL::text
+        """
         import re
 
-        # Simple replacement - might not work for all cases
-        # but good enough for EXPLAIN purposes
+        # Find all placeholders
         placeholders = re.findall(r'\$\d+', query)
+        if not placeholders:
+            return query
+
+        # Try to infer types from context
+        query_upper = query.upper()
+        placeholder_types = {}
+
+        for ph in set(placeholders):
+            # Default to text
+            ph_type = 'text'
+
+            # Look for context clues around the placeholder
+            # Pattern: WHERE column OPERATOR $N
+            # Try to infer from comparison operators and context
+
+            # Check for numeric comparisons
+            numeric_patterns = [
+                rf'{ph}\s*[<>=]',  # $1 < 100
+                rf'[<>=]\s*{re.escape(ph)}',  # age > $1
+                rf'{re.escape(ph)}\s*[-+*/]',  # $1 + 10
+                rf'[-+*/]\s*{re.escape(ph)}',  # 10 * $1
+            ]
+            if any(re.search(pattern, query, re.IGNORECASE) for pattern in numeric_patterns):
+                ph_type = 'integer'
+
+            # Check for boolean context
+            if re.search(rf'(AND|OR|NOT)\s+{re.escape(ph)}', query, re.IGNORECASE):
+                ph_type = 'boolean'
+
+            # Check for LIKE patterns (text)
+            if re.search(rf'{re.escape(ph)}\s+LIKE', query, re.IGNORECASE):
+                ph_type = 'text'
+
+            # Check for IN clauses
+            if re.search(rf'IN\s*\(\s*{re.escape(ph)}', query, re.IGNORECASE):
+                # Could be any type, keep as text for safety
+                ph_type = 'text'
+
+            # Check for common text columns
+            text_column_patterns = [
+                r'(email|name|description|address|city|country|status)',
+                r'(title|message|content|comment|note|text)'
+            ]
+            for pattern in text_column_patterns:
+                if re.search(rf'{pattern}\s*=\s*{re.escape(ph)}', query, re.IGNORECASE):
+                    ph_type = 'text'
+                    break
+
+            # Check for common numeric columns
+            numeric_column_patterns = [
+                r'(id|age|count|price|amount|total|quantity|number)',
+                r'(year|month|day|hour|minute|second|timestamp)'
+            ]
+            for pattern in numeric_column_patterns:
+                if re.search(rf'{pattern}\s*[=<>]\s*{re.escape(ph)}', query, re.IGNORECASE):
+                    ph_type = 'integer'
+                    break
+
+            placeholder_types[ph] = ph_type
+
+        # Replace placeholders with typed NULLs in reverse order to avoid conflicts
         for ph in sorted(set(placeholders), key=lambda x: -int(x[1:])):
-            # Replace with a string that won't break syntax
-            query = query.replace(ph, "'placeholder'")
+            ph_type = placeholder_types.get(ph, 'text')
+            typed_null = f'NULL::{ph_type}'
+            query = query.replace(ph, typed_null)
 
         return query
 
@@ -347,7 +471,7 @@ class BatchAnalyser:
         progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> BatchAnalysisReport:
         """
-        Analyse multiple queries with parallel processing.
+        Analyse multiple queries with parallel processing
 
         Args:
             queries: List of SQL queries to analyse
@@ -402,7 +526,7 @@ class BatchAnalyser:
         progress_callback: Optional[Callable[[int, int], None]] = None
     ) -> BatchAnalysisReport:
         """
-        Analyse queries directly from pg_stat_statements.
+        Analyse queries directly from pg_stat_statements
 
         Args:
             limit: Maximum queries to analyse
@@ -426,7 +550,7 @@ class BatchAnalyser:
         return self.analyse_queries(queries, stats_map, progress_callback)
 
     def _aggregate_results(self, results: List[AnalysisResult]) -> BatchAnalysisReport:
-        """Aggregate individual results into a report."""
+        """Aggregate individual results into a report"""
         report = BatchAnalysisReport(
             timestamp=datetime.now().isoformat(),
             total_queries=len(results)
@@ -514,7 +638,7 @@ class BatchAnalyser:
 
     def get_existing_indexes(self, table_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Get existing indexes from the database.
+        Get existing indexes from the database
 
         Args:
             table_name: Optional table to filter by
@@ -560,7 +684,7 @@ class BatchAnalyser:
 
     def get_table_statistics(self) -> List[Dict[str, Any]]:
         """
-        Get table statistics including row counts and sizes.
+        Get table statistics including row counts and sizes
 
         Returns:
             List of table statistics
@@ -615,7 +739,7 @@ class BatchAnalyser:
         recommendations: List[IndexRecommendation]
     ) -> List[IndexRecommendation]:
         """
-        Filter out recommendations for columns that are already indexed.
+        Filter out recommendations for columns that are already indexed
 
         Args:
             recommendations: List of recommendations

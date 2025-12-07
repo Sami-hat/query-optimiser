@@ -86,7 +86,7 @@ def analyze_single_query(query: str):
 
 
 def demo_queries():
-    """Run analysis on demo queries from test database."""
+    """Run analysis on demo queries from test database"""
     queries = [
         ("Email lookup (exact match)",
          "SELECT * FROM users WHERE email = 'user50000@example.com'"),
@@ -127,7 +127,7 @@ def demo_queries():
 
 
 def interactive_mode():
-    """Interactive mode for analysing custom queries."""
+    """Interactive mode for analysing custom queries"""
     print("\n" + "="*70)
     print("INTERACTIVE QUERY ANALYSER")
     print("="*70)
@@ -162,7 +162,7 @@ def interactive_mode():
 
 
 def main():
-    """Main entry point."""
+    """Main entry point"""
     if len(sys.argv) > 1:
         # Query provided as command line argument
         query = ' '.join(sys.argv[1:])

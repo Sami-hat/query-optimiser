@@ -15,10 +15,10 @@ from src.recommender import IndexRecommendation
 
 
 class TestQueryStats:
-    """Tests for QueryStats dataclass."""
+    """Tests for QueryStats dataclass"""
 
     def test_cache_hit_ratio_all_hits(self):
-        """Cache hit ratio should be 1.0 when all blocks are hits."""
+        """Cache hit ratio should be 1.0 when all blocks are hits"""
         stats = QueryStats(
             query="SELECT 1",
             shared_blks_hit=100,
@@ -27,7 +27,7 @@ class TestQueryStats:
         assert stats.cache_hit_ratio == 1.0
 
     def test_cache_hit_ratio_no_hits(self):
-        """Cache hit ratio should be 0.0 when all blocks are reads."""
+        """Cache hit ratio should be 0.0 when all blocks are reads"""
         stats = QueryStats(
             query="SELECT 1",
             shared_blks_hit=0,
@@ -36,7 +36,7 @@ class TestQueryStats:
         assert stats.cache_hit_ratio == 0.0
 
     def test_cache_hit_ratio_mixed(self):
-        """Cache hit ratio should calculate correctly for mixed access."""
+        """Cache hit ratio should calculate correctly for mixed access"""
         stats = QueryStats(
             query="SELECT 1",
             shared_blks_hit=75,
@@ -45,7 +45,7 @@ class TestQueryStats:
         assert stats.cache_hit_ratio == 0.75
 
     def test_cache_hit_ratio_no_blocks(self):
-        """Cache hit ratio should be 1.0 when no blocks accessed."""
+        """Cache hit ratio should be 1.0 when no blocks accessed"""
         stats = QueryStats(
             query="SELECT 1",
             shared_blks_hit=0,
@@ -55,10 +55,10 @@ class TestQueryStats:
 
 
 class TestAnalysisResult:
-    """Tests for AnalysisResult dataclass."""
+    """Tests for AnalysisResult dataclass"""
 
     def test_to_dict_basic(self):
-        """Test basic conversion to dictionary."""
+        """Test basic conversion to dictionary"""
         result = AnalysisResult(
             query="SELECT * FROM users",
             execution_time_ms=100.5,
@@ -77,7 +77,7 @@ class TestAnalysisResult:
         assert d['recommendations'] == []
 
     def test_to_dict_with_recommendations(self):
-        """Test conversion with recommendations."""
+        """Test conversion with recommendations"""
         rec = IndexRecommendation(
             table_name='users',
             columns=['email'],
@@ -101,7 +101,7 @@ class TestAnalysisResult:
         assert d['recommendations'][0]['ddl'] == 'CREATE INDEX idx_users_email ON users (email);'
 
     def test_to_dict_with_error(self):
-        """Test conversion with error."""
+        """Test conversion with error"""
         result = AnalysisResult(
             query="INVALID SQL",
             error="Syntax error"
@@ -113,10 +113,10 @@ class TestAnalysisResult:
 
 
 class TestBatchAnalysisReport:
-    """Tests for BatchAnalysisReport dataclass."""
+    """Tests for BatchAnalysisReport dataclass"""
 
     def test_to_json(self):
-        """Test JSON serialisation."""
+        """Test JSON serialisation"""
         report = BatchAnalysisReport(
             timestamp="2024-01-01T00:00:00",
             total_queries=10,
@@ -131,7 +131,7 @@ class TestBatchAnalysisReport:
         assert '"failed_queries": 2' in json_str
 
     def test_get_summary(self):
-        """Test human-readable summary generation."""
+        """Test human-readable summary generation"""
         report = BatchAnalysisReport(
             timestamp="2024-01-01T00:00:00",
             total_queries=100,
@@ -159,11 +159,11 @@ class TestBatchAnalysisReport:
 
 
 class TestBatchAnalyser:
-    """Tests for BatchAnalyser class."""
+    """Tests for BatchAnalyser class"""
 
     @pytest.fixture
     def mock_db_connector(self):
-        """Create a mock database connector."""
+        """Create a mock database connector"""
         mock = Mock()
         mock.get_connection.return_value = MagicMock()
         mock.return_connection.return_value = None
@@ -194,7 +194,7 @@ class TestBatchAnalyser:
         return mock
 
     def test_init(self, mock_db_connector):
-        """Test BatchAnalyser initialisation."""
+        """Test BatchAnalyser initialisation"""
         analyser = BatchAnalyser(
             mock_db_connector,
             max_workers=5,
@@ -207,7 +207,7 @@ class TestBatchAnalyser:
         assert analyser.min_mean_time_ms == 50.0
 
     def test_analyse_single_query(self, mock_db_connector):
-        """Test single query analysis."""
+        """Test single query analysis"""
         analyser = BatchAnalyser(mock_db_connector)
 
         result = analyser.analyse_single_query(
@@ -222,7 +222,7 @@ class TestBatchAnalyser:
         assert result.seq_scans[0]['table_name'] == 'users'
 
     def test_analyse_single_query_with_placeholder(self, mock_db_connector):
-        """Test query with $1 placeholders gets processed."""
+        """Test query with $1 placeholders gets processed"""
         analyser = BatchAnalyser(mock_db_connector)
 
         result = analyser.analyse_single_query(
@@ -235,7 +235,7 @@ class TestBatchAnalyser:
         mock_db_connector.get_explain_plan.assert_called()
 
     def test_analyse_single_query_error(self, mock_db_connector):
-        """Test error handling in single query analysis."""
+        """Test error handling in single query analysis"""
         mock_db_connector.get_explain_plan.side_effect = Exception("Connection failed")
 
         analyser = BatchAnalyser(mock_db_connector)
@@ -244,7 +244,7 @@ class TestBatchAnalyser:
         assert result.error == "Connection failed"
 
     def test_analyse_queries_parallel(self, mock_db_connector):
-        """Test parallel query analysis."""
+        """Test parallel query analysis"""
         analyser = BatchAnalyser(mock_db_connector, max_workers=3)
 
         queries = [
@@ -260,7 +260,7 @@ class TestBatchAnalyser:
         assert report.failed_queries == 0
 
     def test_analyse_queries_with_progress(self, mock_db_connector):
-        """Test progress callback is called."""
+        """Test progress callback is called"""
         analyser = BatchAnalyser(mock_db_connector, max_workers=1)
 
         progress_calls = []
@@ -280,7 +280,7 @@ class TestBatchAnalyser:
         assert currents == [1, 2, 3]
 
     def test_analyse_queries_aggregation(self, mock_db_connector):
-        """Test result aggregation."""
+        """Test result aggregation"""
         analyser = BatchAnalyser(mock_db_connector)
 
         queries = [
@@ -294,7 +294,7 @@ class TestBatchAnalyser:
         assert 'users' in report.tables_affected
 
     def test_replace_placeholders(self, mock_db_connector):
-        """Test placeholder replacement."""
+        """Test placeholder replacement"""
         analyser = BatchAnalyser(mock_db_connector)
 
         query = "SELECT * FROM users WHERE id = $1 AND status = $2"
@@ -305,7 +305,7 @@ class TestBatchAnalyser:
         assert "'placeholder'" in replaced
 
     def test_replace_placeholders_high_numbers(self, mock_db_connector):
-        """Test placeholder replacement with high numbers."""
+        """Test placeholder replacement with high numbers"""
         analyser = BatchAnalyser(mock_db_connector)
 
         query = "SELECT * FROM t WHERE a = $1 AND b = $10 AND c = $2"
@@ -317,11 +317,11 @@ class TestBatchAnalyser:
 
 
 class TestBatchAnalyserIntegration:
-    """Integration tests that require a real database connection."""
+    """Integration tests that require a real database connection"""
 
     @pytest.fixture
     def db_connector(self):
-        """Create a real database connector if available."""
+        """Create a real database connector if available"""
         try:
             from src.db_connector import DatabaseConnector
             connector = DatabaseConnector()
@@ -334,7 +334,7 @@ class TestBatchAnalyserIntegration:
             pytest.skip("Database connection not available")
 
     def test_analyse_real_query(self, db_connector):
-        """Test analysis with real database."""
+        """Test analysis with real database"""
         analyser = BatchAnalyser(db_connector)
 
         result = analyser.analyse_single_query(
@@ -345,7 +345,7 @@ class TestBatchAnalyserIntegration:
         assert result.total_cost > 0
 
     def test_get_existing_indexes(self, db_connector):
-        """Test fetching existing indexes."""
+        """Test fetching existing indexes"""
         analyser = BatchAnalyser(db_connector)
 
         indexes = analyser.get_existing_indexes()
@@ -359,7 +359,7 @@ class TestBatchAnalyserIntegration:
             assert 'definition' in idx
 
     def test_get_table_statistics(self, db_connector):
-        """Test fetching table statistics."""
+        """Test fetching table statistics"""
         analyser = BatchAnalyser(db_connector)
 
         stats = analyser.get_table_statistics()
@@ -375,7 +375,7 @@ class TestBatchAnalyserIntegration:
             assert 'write_ratio' in users_stats
 
     def test_batch_analyse_multiple_queries(self, db_connector):
-        """Test batch analysis with multiple queries."""
+        """Test batch analysis with multiple queries"""
         analyser = BatchAnalyser(db_connector, max_workers=3)
 
         queries = [
@@ -397,18 +397,18 @@ class TestBatchAnalyserIntegration:
 
 
 class TestFilterRecommendations:
-    """Tests for filtering recommendations by existing indexes."""
+    """Tests for filtering recommendations by existing indexes"""
 
     @pytest.fixture
     def mock_db_connector(self):
-        """Create a mock database connector."""
+        """Create a mock database connector"""
         mock = Mock()
         mock.get_connection.return_value = MagicMock()
         mock.return_connection.return_value = None
         return mock
 
     def test_filter_already_indexed(self, mock_db_connector):
-        """Filter out recommendations for already-indexed columns."""
+        """Filter out recommendations for already-indexed columns"""
         analyser = BatchAnalyser(mock_db_connector)
 
         # Mock get_existing_indexes
@@ -441,7 +441,7 @@ class TestFilterRecommendations:
         assert filtered[0].columns == ['name']
 
     def test_filter_keeps_unindexed(self, mock_db_connector):
-        """Keep recommendations for columns not yet indexed."""
+        """Keep recommendations for columns not yet indexed"""
         analyser = BatchAnalyser(mock_db_connector)
 
         analyser.get_existing_indexes = Mock(return_value=[])

@@ -9,7 +9,7 @@ from src.db_connector import DatabaseConnector
 
 @pytest.fixture
 def mock_env_vars(monkeypatch):
-    """Set up mock environment variables for testing."""
+    """Set up mock environment variables for testing"""
     monkeypatch.setenv('DB_HOST', 'localhost')
     monkeypatch.setenv('DB_PORT', '5432')
     monkeypatch.setenv('DB_NAME', 'test_db')
@@ -19,7 +19,7 @@ def mock_env_vars(monkeypatch):
 
 @pytest.fixture
 def sample_explain_plan():
-    """Sample EXPLAIN ANALYZE output in JSON format."""
+    """Sample EXPLAIN ANALYZE output in JSON format"""
     return {
         'query': "SELECT * FROM users WHERE email = 'test@example.com'",
         'explain_plan': {
@@ -44,7 +44,7 @@ def sample_explain_plan():
 
 @pytest.fixture
 def nested_explain_plan():
-    """EXPLAIN plan with nested structure (JOIN)."""
+    """EXPLAIN plan with nested structure (JOIN)"""
     return {
         'query': "SELECT u.*, o.id FROM users u JOIN orders o ON u.id = o.user_id WHERE o.status = 'pending'",
         'explain_plan': {
@@ -88,10 +88,10 @@ def nested_explain_plan():
 
 
 class TestDatabaseConnector:
-    """Test suite for DatabaseConnector class."""
+    """Test suite for DatabaseConnector class"""
 
     def test_init_with_env_vars(self, mock_env_vars):
-        """Test initialization with environment variables."""
+        """Test initialization with environment variables"""
         with patch('psycopg2.pool.ThreadedConnectionPool'):
             connector = DatabaseConnector()
             assert connector.host == 'localhost'
@@ -101,7 +101,7 @@ class TestDatabaseConnector:
             assert connector.password == 'test_password'
 
     def test_init_with_explicit_params(self):
-        """Test initialization with explicit parameters."""
+        """Test initialization with explicit parameters"""
         with patch('psycopg2.pool.ThreadedConnectionPool'):
             connector = DatabaseConnector(
                 host='custom_host',
@@ -115,7 +115,7 @@ class TestDatabaseConnector:
             assert connector.database == 'custom_db'
 
     def test_init_missing_credentials(self, monkeypatch):
-        """Test that initialization fails without credentials."""
+        """Test that initialization fails without credentials"""
         monkeypatch.delenv('DB_NAME', raising=False)
         monkeypatch.delenv('DB_USER', raising=False)
         monkeypatch.delenv('DB_PASSWORD', raising=False)
@@ -124,7 +124,7 @@ class TestDatabaseConnector:
             DatabaseConnector()
 
     def test_connection_pool_initialization(self, mock_env_vars):
-        """Test that connection pool is initialized correctly."""
+        """Test that connection pool is initialized correctly"""
         with patch('psycopg2.pool.ThreadedConnectionPool') as mock_pool:
             connector = DatabaseConnector(pool_min=2, pool_max=10)
             mock_pool.assert_called_once()
@@ -132,7 +132,7 @@ class TestDatabaseConnector:
             assert args[0] == (2, 10)
 
     def test_get_explain_plan_structure(self, mock_env_vars, sample_explain_plan):
-        """Test that get_explain_plan returns correct structure."""
+        """Test that get_explain_plan returns correct structure"""
         with patch('psycopg2.pool.ThreadedConnectionPool'):
             connector = DatabaseConnector()
 
@@ -156,7 +156,7 @@ class TestDatabaseConnector:
             assert result['analyzed'] is True
 
     def test_get_explain_plan_empty_query(self, mock_env_vars):
-        """Test that empty query raises ValueError."""
+        """Test that empty query raises ValueError"""
         with patch('psycopg2.pool.ThreadedConnectionPool'):
             connector = DatabaseConnector()
 
@@ -167,7 +167,7 @@ class TestDatabaseConnector:
                 connector.get_explain_plan("   ")
 
     def test_extract_execution_metrics(self, mock_env_vars, sample_explain_plan):
-        """Test extraction of execution metrics."""
+        """Test extraction of execution metrics"""
         with patch('psycopg2.pool.ThreadedConnectionPool'):
             connector = DatabaseConnector()
             metrics = connector.extract_execution_metrics(sample_explain_plan)
@@ -180,7 +180,7 @@ class TestDatabaseConnector:
             assert metrics['startup_cost'] == 0.00
 
     def test_detect_sequential_scans_single(self, mock_env_vars, sample_explain_plan):
-        """Test detection of single sequential scan."""
+        """Test detection of single sequential scan"""
         with patch('psycopg2.pool.ThreadedConnectionPool'):
             connector = DatabaseConnector()
             scans = connector.detect_sequential_scans(sample_explain_plan)
@@ -194,7 +194,7 @@ class TestDatabaseConnector:
             assert scans[0]['rows_removed_by_filter'] == 999
 
     def test_detect_sequential_scans_multiple(self, mock_env_vars, nested_explain_plan):
-        """Test detection of multiple sequential scans in nested plan."""
+        """Test detection of multiple sequential scans in nested plan"""
         with patch('psycopg2.pool.ThreadedConnectionPool'):
             connector = DatabaseConnector()
             scans = connector.detect_sequential_scans(nested_explain_plan)
@@ -213,7 +213,7 @@ class TestDatabaseConnector:
             assert orders_scan['rows_removed_by_filter'] == 550
 
     def test_detect_sequential_scans_none(self, mock_env_vars):
-        """Test that no sequential scans are found when using index."""
+        """Test that no sequential scans are found when using index"""
         index_scan_plan = {
             'query': "SELECT * FROM users WHERE id = 1000",
             'explain_plan': {
@@ -240,7 +240,7 @@ class TestDatabaseConnector:
             assert len(scans) == 0
 
     def test_test_connection_success(self, mock_env_vars):
-        """Test successful connection test."""
+        """Test successful connection test"""
         with patch('psycopg2.pool.ThreadedConnectionPool'):
             connector = DatabaseConnector()
 
@@ -258,7 +258,7 @@ class TestDatabaseConnector:
             assert connector.test_connection() is True
 
     def test_test_connection_failure(self, mock_env_vars):
-        """Test failed connection test."""
+        """Test failed connection test"""
         with patch('psycopg2.pool.ThreadedConnectionPool'):
             connector = DatabaseConnector()
 
@@ -268,7 +268,7 @@ class TestDatabaseConnector:
             assert connector.test_connection() is False
 
     def test_close_pool(self, mock_env_vars):
-        """Test closing connection pool."""
+        """Test closing connection pool"""
         with patch('psycopg2.pool.ThreadedConnectionPool'):
             connector = DatabaseConnector()
             connector.connection_pool.closeall = Mock()

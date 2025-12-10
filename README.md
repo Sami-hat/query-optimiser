@@ -108,17 +108,12 @@ export DB_PASSWORD=your_password
 
 The simplest way to run the entire stack (PostgreSQL + API + Frontend):
 
-1. Copy environment file:
+1. Copy environment file and edit details:
 ```bash
 cp .env.example .env
 ```
 
-2. Edit .env and set your password:
-```bash
-DB_PASSWORD=your_secure_password
-```
-
-3. Start all services using Make:
+2. Start all services using Make:
 ```bash
 make up
 ```
@@ -128,12 +123,12 @@ Or using docker-compose directly:
 docker-compose up -d
 ```
 
-4. Set up test database:
+3. Set up test database:
 ```bash
 make setup-test
 ```
 
-5. Access the application:
+4. Access the application:
    - Frontend: http://localhost
    - API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
@@ -298,40 +293,6 @@ curl -X POST http://localhost:8000/api/apply \
   }'
 ```
 
-## Configuration
-
-### Environment Variables
-
-- `DB_HOST`: Database host (default: localhost)
-- `DB_PORT`: Database port (default: 5432)
-- `DB_NAME`: Database name (required)
-- `DB_USER`: Database user (required)
-- `DB_PASSWORD`: Database password (required)
-- `DB_POOL_SIZE`: Connection pool size (default: 5)
-- `STATEMENT_TIMEOUT_MS`: Query timeout in milliseconds (default: 30000)
-- `API_PORT`: API server port (default: 8000)
-- `LOG_LEVEL`: Logging level (default: INFO)
-- `AWS_REGION`: AWS region for CloudWatch (optional)
-- `CLOUDWATCH_NAMESPACE`: CloudWatch namespace (default: PostgreSQLOptimizer)
-
-### Database Permissions
-
-The user needs the following permissions:
-
-```sql
--- Read access to tables being analyzed
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO optimizer_user;
-
--- Access to PostgreSQL statistics
-GRANT SELECT ON pg_stat_statements TO optimizer_user;
-GRANT SELECT ON pg_stats TO optimizer_user;
-GRANT SELECT ON pg_class TO optimizer_user;
-GRANT SELECT ON pg_index TO optimizer_user;
-
--- Optional: Create indexes (for apply endpoint)
-GRANT CREATE ON SCHEMA public TO optimizer_user;
-```
-
 ## Testing
 
 Run the test suite:
@@ -412,27 +373,6 @@ Example results:
 - E-commerce query: 1.2s -> 6ms (99.5% improvement)
 - User lookup: 450ms -> 2ms (99.6% improvement)
 - Report generation: 5.3s -> 180ms (96.6% improvement)
-
-## Troubleshooting
-
-**Query timeout errors:**
-- Increase `STATEMENT_TIMEOUT_MS` environment variable
-- Use `analyze=False` for initial analysis (safer, faster)
-
-**No recommendations generated:**
-- Check that pg_stat_statements extension is enabled
-- Ensure queries have been executed multiple times
-- Verify database user has SELECT permissions on pg_stats
-
-**Over-indexing warnings:**
-- Review table write patterns with `get_table_statistics()`
-- Consider dropping unused indexes
-- Use partial indexes for filtered queries
-
-**Connection pool exhausted:**
-- Increase `DB_POOL_SIZE` environment variable
-- Check for connection leaks in application code
-- Monitor with `db.get_pool_status()`
 
 ## License
 

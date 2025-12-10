@@ -340,7 +340,7 @@ section h3 {
     color: var(--text-secondary);
 }
 
-/* Batch Analysis */
+/* Batch analysis */
 .batch-controls label {
     display: flex;
     align-items: center;

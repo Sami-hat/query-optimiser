@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PostgreSQL Performance Analyser</title>
+    <title>PostgreSQL Performance analyzer</title>
     <link rel="stylesheet" href="/static/css/styles.css">
     <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>PostgreSQL Performance Analyser</h1>
+            <h1>PostgreSQL Performance analyzer</h1>
             <div class="status-indicator" id="status">
                 <span class="status-dot"></span>
                 <span class="status-text">Connecting...</span>
@@ -20,12 +20,12 @@
         <main>
             <!-- Query Input Section -->
             <section class="query-section">
-                <h2>Analyse Query</h2>
+                <h2>analyze Query</h2>
                 <div class="query-input-wrapper">
                     <textarea id="query-input" placeholder="Enter your SQL query here...
 Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
                     <div class="query-controls">
-                        <button id="analyse-btn" class="btn primary">Analyse Query</button>
+                        <button id="analyze-btn" class="btn primary">analyze Query</button>
                         <button id="clear-btn" class="btn secondary">Clear</button>
                     </div>
                 </div>
@@ -88,7 +88,7 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
                         <label>
                             <input type="checkbox" id="filter-existing"> Filter existing indexes
                         </label>
-                        <button id="batch-analyse-btn" class="btn primary">Analyse Batch</button>
+                        <button id="batch-analyze-btn" class="btn primary">analyze Batch</button>
                     </div>
                 </div>
                 <div id="batch-results" style="display: none;">
@@ -99,14 +99,14 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
         </main>
 
         <footer>
-            <p>PostgreSQL Performance Analyser v1.0.0</p>
+            <p>PostgreSQL Performance analyzer v1.0.0</p>
         </footer>
     </div>
 
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loading" style="display: none;">
         <div class="spinner"></div>
-        <p>Analysing...</p>
+        <p>analyzing...</p>
     </div>
 
     <script src="/static/js/api.js"></script>

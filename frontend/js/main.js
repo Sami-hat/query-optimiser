@@ -10,7 +10,7 @@ let heatmap = null;
 const statusDot = document.querySelector('.status-dot');
 const statusText = document.querySelector('.status-text');
 const queryInput = document.getElementById('query-input');
-const analyseBtn = document.getElementById('analyse-btn');
+const analyzeBtn = document.getElementById('analyze-btn');
 const clearBtn = document.getElementById('clear-btn');
 const resultsSection = document.getElementById('results-section');
 const loadingOverlay = document.getElementById('loading');
@@ -23,7 +23,7 @@ const seqScansEl = document.getElementById('seq-scans');
 
 // Batch elements
 const batchQueries = document.getElementById('batch-queries');
-const batchAnalyseBtn = document.getElementById('batch-analyse-btn');
+const batchanalyzeBtn = document.getElementById('batch-analyze-btn');
 const workersInput = document.getElementById('workers');
 const filterExistingCheck = document.getElementById('filter-existing');
 const batchResults = document.getElementById('batch-results');
@@ -41,15 +41,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadTableStats();
 
     // Event listeners
-    analyseBtn.addEventListener('click', handleAnalyse);
+    analyzeBtn.addEventListener('click', handleanalyze);
     clearBtn.addEventListener('click', handleClear);
-    batchAnalyseBtn.addEventListener('click', handleBatchAnalyse);
+    batchanalyzeBtn.addEventListener('click', handleBatchanalyze);
     refreshTablesBtn.addEventListener('click', loadTableStats);
 
-    // Enter key to analyse
+    // Enter key to analyze
     queryInput.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'Enter') {
-            handleAnalyse();
+            handleanalyze();
         }
     });
 });
@@ -77,7 +77,7 @@ function showLoading(show = true) {
     loadingOverlay.style.display = show ? 'flex' : 'none';
 }
 
-async function handleAnalyse() {
+async function handleanalyze() {
     const query = queryInput.value.trim();
     if (!query) {
         alert('Please enter a SQL query');
@@ -85,16 +85,16 @@ async function handleAnalyse() {
     }
 
     showLoading(true);
-    analyseBtn.disabled = true;
+    analyzeBtn.disabled = true;
 
     try {
-        const result = await api.analyseQuery(query, true);
+        const result = await api.analyzeQuery(query, true);
         displayResults(result);
     } catch (error) {
-        alert(`Analysis failed: ${error.message}`);
+        alert(`analysis failed: ${error.message}`);
     } finally {
         showLoading(false);
-        analyseBtn.disabled = false;
+        analyzeBtn.disabled = false;
     }
 }
 
@@ -220,10 +220,10 @@ function displayTableCards(stats) {
     });
 }
 
-async function handleBatchAnalyse() {
+async function handleBatchanalyze() {
     const queriesText = batchQueries.value.trim();
     if (!queriesText) {
-        alert('Please enter queries to analyse');
+        alert('Please enter queries to analyze');
         return;
     }
 
@@ -234,10 +234,10 @@ async function handleBatchAnalyse() {
     }
 
     showLoading(true);
-    batchAnalyseBtn.disabled = true;
+    batchanalyzeBtn.disabled = true;
 
     try {
-        const result = await api.batchAnalyse(queries, {
+        const result = await api.batchanalyze(queries, {
             maxWorkers: parseInt(workersInput.value) || 10,
             filterExisting: filterExistingCheck.checked
         });
@@ -247,7 +247,7 @@ async function handleBatchAnalyse() {
         alert(`Batch analysis failed: ${error.message}`);
     } finally {
         showLoading(false);
-        batchAnalyseBtn.disabled = false;
+        batchanalyzeBtn.disabled = false;
     }
 }
 
@@ -263,8 +263,8 @@ function displayBatchResults(result) {
                 <div class="summary-label">Total Queries</div>
             </div>
             <div class="summary-item">
-                <div class="summary-value">${result.analysed_queries}</div>
-                <div class="summary-label">Analysed</div>
+                <div class="summary-value">${result.analyzed_queries}</div>
+                <div class="summary-label">analyzed</div>
             </div>
             <div class="summary-item">
                 <div class="summary-value" style="color: ${result.failed_queries > 0 ? '#ff4444' : '#00ff88'}">

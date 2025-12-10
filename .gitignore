@@ -80,8 +80,3 @@ report.json
 *.bak
 *.backup
 *~
-
-# Project specific
-notes.txt
-.claude/
-sample_queries.txt

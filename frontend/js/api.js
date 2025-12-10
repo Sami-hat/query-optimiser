@@ -1,7 +1,7 @@
 /**
- * API Client for PostgreSQL Performance Analyser
+ * API Client for PostgreSQL Performance analyzer
  */
-class AnalyserAPI {
+class analyzerAPI {
     constructor(baseUrl = 'http://localhost:8000') {
         this.baseUrl = baseUrl;
         this.apiKey = null;
@@ -40,8 +40,8 @@ class AnalyserAPI {
         return this.request('/health');
     }
 
-    async analyseQuery(query, includeExplain = true) {
-        return this.request('/analyse', {
+    async analyzeQuery(query, includeExplain = true) {
+        return this.request('/analyze', {
             method: 'POST',
             body: JSON.stringify({
                 query,
@@ -50,8 +50,8 @@ class AnalyserAPI {
         });
     }
 
-    async batchAnalyse(queries, options = {}) {
-        return this.request('/batch-analyse', {
+    async batchanalyze(queries, options = {}) {
+        return this.request('/batch-analyze', {
             method: 'POST',
             body: JSON.stringify({
                 queries,
@@ -81,4 +81,4 @@ class AnalyserAPI {
 }
 
 // Global API instance
-const api = new AnalyserAPI();
+const api = new analyzerAPI();

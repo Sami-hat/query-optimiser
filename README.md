@@ -1,6 +1,6 @@
 # PostgreSQL Query Optimization System
 
-An automated PostgreSQL performance analysis and index recommendation system. Analyzes query execution plans, identifies performance bottlenecks, and suggests optimal indexes based on real database statistics.
+An automated PostgreSQL performance analysis tool. Analyzes query execution plans, identifies performance bottlenecks, suggests optimal indexes based on real database statistics, and detects SQL anti-patterns with rewrite suggestions.
 
 ## Operations Pipeline
 
@@ -10,6 +10,7 @@ An automated PostgreSQL performance analysis and index recommendation system. An
 4. Selectivity Calculation: Combines EXPLAIN data with pg_stats to estimate index effectiveness
 5. Index Recommendation: Suggests optimal indexes with column ordering, partial predicates, and covering columns
 6. Cost-Benefit Analysis: Estimates performance improvements and checks for over-indexing
+7. Query Rewrite Detection: Scans the AST for SQL anti-patterns and suggests rewrites (no database connection required)
 
 ## Directory Structure
 
@@ -21,6 +22,7 @@ db-optimisation/
         query_parser.py          # SQL parsing with pglast, AST traversal, column mapping
         recommender.py           # Core recommendation engine, selectivity calculation
         batch_analyser.py        # Batch processing from pg_stat_statements
+        query_rewriter.py        # Rule-based SQL anti-pattern detection and rewrite suggestions
         cloudwatch_metrics.py    # AWS CloudWatch integration
         api/
             __init__.py
@@ -34,6 +36,7 @@ db-optimisation/
         test_parser.py           # Parser unit tests
         test_connector.py        # Database connector tests
         test_batch_analyser.py   # Batch analyser tests
+        test_query_rewriter.py   # Query rewriter unit tests (no DB required)
         test_api.py              # API endpoint tests
 
     scripts/
@@ -59,10 +62,10 @@ db-optimisation/
     requirements.txt             # Python dependencies
     run_api.py                   # API server entry point
     connect.py                   # Database connection utility
-    README.md                    # This file
     .env.example                 # Example environment configuration
     .dockerignore                # Docker ignore patterns
     .gitignore                   # Git ignore patterns
+    README.md                    # This file
     LICENSE                      # License file
 ```
 
@@ -255,12 +258,29 @@ curl http://localhost:8000/health
 
 **2. Analyze Single Query**
 ```bash
-curl -X POST http://localhost:8000/api/analyze \
+curl -X POST http://localhost:8000/analyse \
   -H "Content-Type: application/json" \
   -d '{
     "query": "SELECT * FROM users WHERE email = '\''test@example.com'\''",
-    "analyze": false
+    "include_explain": true
   }'
+```
+
+Response includes index recommendations **and** query rewrite suggestions:
+```json
+{
+  "recommendations": [...],
+  "query_rewrites": [
+    {
+      "pattern_name": "select_star",
+      "description": "SELECT * retrieves all columns unnecessarily",
+      "original_snippet": "SELECT *",
+      "suggested_rewrite": "SELECT col1, col2, ...",
+      "reason": "SELECT * prevents index-only scans and increases network transfer.",
+      "improvement_level": "medium"
+    }
+  ]
+}
 ```
 
 **3. Batch Analysis**
@@ -293,17 +313,55 @@ curl -X POST http://localhost:8000/api/apply \
   }'
 ```
 
+## Query Rewrite Suggestions
+
+The rewrite engine (`src/query_rewriter.py`) scans the parsed AST for seven SQL anti-patterns and returns structured suggestions alongside index recommendations. It requires no database connection and runs on every `/analyse` request.
+
+| Pattern | Trigger | Impact |
+| `select_star` | `SELECT *` | medium |
+| `leading_wildcard_like` | `LIKE '%value'` or `ILIKE '%...'` | high |
+| `not_in_subquery` | `col NOT IN (SELECT ...)` | high |
+| `function_on_column` | `LOWER(col) = ...` or `DATE(col) = ...` in WHERE | high |
+| `implicit_cast` | `col::text = ...` or `CAST(col AS ...)` in WHERE | high |
+| `large_offset` | `OFFSET >= 1000` | medium |
+| `or_on_same_column` | `col = 'a' OR col = 'b'` | low |
+
+Each suggestion includes the original snippet, a concrete rewrite or advice, and the reason the original pattern hurts performance. High-impact suggestions are sorted first.
+
+Using the rewriter directly (no database needed):
+
+```python
+from src.query_rewriter import QueryRewriter
+
+rw = QueryRewriter()
+suggestions = rw.analyse("""
+    SELECT * FROM users
+    WHERE LOWER(email) = 'test@example.com'
+    AND id NOT IN (SELECT user_id FROM banned_users)
+    LIMIT 20 OFFSET 10000
+""")
+
+for s in suggestions:
+    print(f"[{s.improvement_level.upper()}] {s.description}")
+    print(f"  Original:  {s.original_snippet}")
+    print(f"  Suggested: {s.suggested_rewrite}")
+    print(f"  Reason:    {s.reason}")
+    print()
+```
+
 ## Testing
 
 Run the test suite:
 
 ```bash
-# Unit tests
-pytest tests/test_query_parser.py
-pytest tests/test_recommender.py
+# Unit tests (no database required)
+pytest tests/test_parser.py
+pytest tests/test_query_rewriter.py
 
-# Integration tests (requires test database)
-pytest tests/test_integration.py
+# Tests requiring a database connection
+pytest tests/test_connector.py
+pytest tests/test_batch_analyser.py
+pytest tests/test_api.py
 
 # All tests with coverage
 pytest --cov=src tests/

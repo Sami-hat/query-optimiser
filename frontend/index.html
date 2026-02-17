@@ -61,8 +61,20 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
 
                 <!-- Recommendations -->
                 <div class="recommendations-container">
-                    <h3>Index Recommendations</h3>
+                    <div class="section-header">
+                        <h3>Index Recommendations</h3>
+                        <div class="export-actions" id="export-actions" style="display:none;">
+                            <button class="btn-export" onclick="exportQueryCSV()">Export CSV</button>
+                            <button class="btn-export" onclick="exportQueryPDF()">Export PDF</button>
+                        </div>
+                    </div>
                     <div id="recommendations"></div>
+                </div>
+
+                <!-- Query Rewrites -->
+                <div class="rewrites-container" id="rewrites-container" style="display:none;">
+                    <h3>Query Rewrite Suggestions</h3>
+                    <div id="query-rewrites"></div>
                 </div>
             </section>
 
@@ -93,6 +105,10 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
                 </div>
                 <div id="batch-results" style="display: none;">
                     <div class="batch-summary" id="batch-summary"></div>
+                    <div class="batch-export-actions" id="batch-export-actions" style="display:none;">
+                        <button class="btn-export" onclick="exportBatchCSV()">Export CSV</button>
+                        <button class="btn-export" onclick="exportBatchPDF()">Export PDF</button>
+                    </div>
                     <div class="batch-recommendations" id="batch-recommendations"></div>
                 </div>
             </section>

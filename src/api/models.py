@@ -52,6 +52,17 @@ class IndexRecommendationResponse(BaseModel):
     include_columns: List[str] = []  # INCLUDE columns for covering indexes
 
 
+class RewriteSuggestionResponse(BaseModel):
+    """Single SQL rewrite suggestion from the rule-based anti-pattern engine"""
+    pattern_name: str
+    description: str
+    original_snippet: str
+    suggested_rewrite: str
+    reason: str
+    improvement_level: str  # 'high' | 'medium' | 'low'
+    rewritten_query: Optional[str] = None
+
+
 class ExecutionMetrics(BaseModel):
     """Query execution metrics"""
     execution_time_ms: float
@@ -68,6 +79,7 @@ class AnalyseQueryResponse(BaseModel):
     sequential_scans: List[SequentialScanInfo]
     recommendations: List[IndexRecommendationResponse]
     explain_plan: Optional[Dict[str, Any]] = None
+    query_rewrites: List[RewriteSuggestionResponse] = []
 
 
 class BatchAnalyseResponse(BaseModel):

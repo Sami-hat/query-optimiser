@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -25,11 +26,13 @@ from .models import (
     ExecutionMetrics,
     SequentialScanInfo,
     IndexRecommendationResponse,
+    RewriteSuggestionResponse,
     TableStatistics,
 )
 from ..db_connector import DatabaseConnector
 from ..recommender import IndexRecommender
 from ..batch_analyser import BatchAnalyser
+from ..query_rewriter import QueryRewriter
 
 load_dotenv()
 
@@ -37,6 +40,7 @@ load_dotenv()
 db_connector: Optional[DatabaseConnector] = None
 recommender: Optional[IndexRecommender] = None
 batch_analyser: Optional[BatchAnalyser] = None
+query_rewriter: Optional[QueryRewriter] = None
 
 # API key security
 API_KEY_NAME = "X-API-Key"
@@ -51,13 +55,14 @@ RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "3600"))  # 1 hour
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle"""
-    global db_connector, recommender, batch_analyser
+    global db_connector, recommender, batch_analyser, query_rewriter
 
     # Startup
     try:
         db_connector = DatabaseConnector()
         recommender = IndexRecommender(db_connector)
         batch_analyser = BatchAnalyser(db_connector)
+        query_rewriter = QueryRewriter()
         print("Database connection established")
     except Exception as e:
         print(f"Warning: Could not connect to database: {e}")
@@ -219,6 +224,14 @@ async def analyse_query(
         # Get recommendations
         recommendations = recommender.analyse_query(request.query, explain_output)
 
+        # Get query rewrite suggestions (best-effort; never fails the request)
+        rewrites = []
+        if query_rewriter:
+            try:
+                rewrites = query_rewriter.analyse(request.query, explain_output, seq_scans)
+            except Exception:
+                pass
+
         # Build response
         return AnalyseQueryResponse(
             query=request.query,
@@ -257,7 +270,19 @@ async def analyse_query(
                 )
                 for rec in recommendations
             ],
-            explain_plan=explain_output if request.include_explain else None
+            explain_plan=explain_output if request.include_explain else None,
+            query_rewrites=[
+                RewriteSuggestionResponse(
+                    pattern_name=rw.pattern_name,
+                    description=rw.description,
+                    original_snippet=rw.original_snippet,
+                    suggested_rewrite=rw.suggested_rewrite,
+                    reason=rw.reason,
+                    improvement_level=rw.improvement_level,
+                    rewritten_query=rw.rewritten_query,
+                )
+                for rw in rewrites
+            ],
         )
 
     except ValueError as e:
@@ -436,34 +461,51 @@ async def apply_indexes(
     db: DatabaseConnector = Depends(require_db)
 ):
     """
-    Apply index recommendations by executing CREATE INDEX statements
+    Apply index recommendations using CREATE INDEX CONCURRENTLY.
 
-    Use dry_run=true to validate without executing
+    CONCURRENTLY builds the index without holding a table lock, so reads and
+    writes continue uninterrupted — safe for production databases.
+    Use dry_run=true to validate without executing.
     """
     results = []
 
     for ddl in request.ddl_statements:
         result = ApplyIndexResult(ddl=ddl, success=False)
 
-        # Validate DDL
-        if not ddl.strip().upper().startswith("CREATE INDEX"):
+        # Validate DDL — allow CREATE INDEX and CREATE UNIQUE INDEX
+        if not re.match(r'CREATE\s+(?:UNIQUE\s+)?INDEX', ddl.strip(), re.IGNORECASE):
             result.error = "Only CREATE INDEX statements are allowed"
             results.append(result)
             continue
 
+        # Rewrite to CONCURRENTLY if not already present — prevents table locks
+        if not re.match(r'CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY', ddl.strip(), re.IGNORECASE):
+            concurrent_ddl = re.sub(
+                r'(CREATE\s+(?:UNIQUE\s+)?INDEX)\s+',
+                r'\1 CONCURRENTLY ',
+                ddl.strip(),
+                count=1,
+                flags=re.IGNORECASE,
+            )
+        else:
+            concurrent_ddl = ddl.strip()
+
         if request.dry_run:
             result.success = True
-            result.error = "Dry run - not executed"
+            result.error = f"Dry run - would execute: {concurrent_ddl}"
             results.append(result)
             continue
 
-        # Execute DDL
+        # Execute DDL — CONCURRENTLY requires autocommit (no transaction block)
         try:
             start_time = time.time()
             with db.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(ddl)
-                conn.commit()
+                try:
+                    conn.autocommit = True
+                    with conn.cursor() as cur:
+                        cur.execute(concurrent_ddl)
+                finally:
+                    conn.autocommit = False  # restore before returning to pool
             result.success = True
             result.execution_time_ms = (time.time() - start_time) * 1000
 

@@ -6,6 +6,10 @@
 let flameGraph = null;
 let heatmap = null;
 
+// Last results — used by export functions
+let lastQueryResult = null;
+let lastBatchResult = null;
+
 // DOM elements
 const statusDot = document.querySelector('.status-dot');
 const statusText = document.querySelector('.status-text');
@@ -105,6 +109,7 @@ function handleClear() {
 }
 
 function displayResults(result) {
+    lastQueryResult = result;
     resultsSection.style.display = 'block';
 
     // Update metrics
@@ -125,6 +130,15 @@ function displayResults(result) {
 
     // Render recommendations
     displayRecommendations(result.recommendations);
+
+    // Show export buttons when there are recommendations
+    const exportActions = document.getElementById('export-actions');
+    if (exportActions) {
+        exportActions.style.display = result.recommendations && result.recommendations.length > 0 ? 'flex' : 'none';
+    }
+
+    // Render query rewrite suggestions
+    displayRewrites(result.query_rewrites || []);
 }
 
 function displayRecommendations(recommendations) {
@@ -252,6 +266,7 @@ async function handleBatchanalyze() {
 }
 
 function displayBatchResults(result) {
+    lastBatchResult = result;
     batchResults.style.display = 'block';
 
     const summary = document.getElementById('batch-summary');
@@ -296,7 +311,175 @@ function displayBatchResults(result) {
 
     // Copy recommendations to batch section
     recommendations.innerHTML = document.getElementById('recommendations').innerHTML;
+
+    // Show batch export buttons
+    const batchExport = document.getElementById('batch-export-actions');
+    if (batchExport) {
+        batchExport.style.display = result.top_recommendations && result.top_recommendations.length > 0 ? 'flex' : 'none';
+    }
 }
 
 // Periodic health check
 setInterval(checkHealth, 30000);
+
+// ===== Query Rewrite Suggestions =====
+
+function displayRewrites(rewrites) {
+    const wrapper = document.getElementById('rewrites-container');
+    const container = document.getElementById('query-rewrites');
+    container.innerHTML = '';
+
+    if (!rewrites || rewrites.length === 0) {
+        wrapper.style.display = 'none';
+        return;
+    }
+
+    wrapper.style.display = 'block';
+
+    rewrites.forEach((rw) => {
+        const badgeClass =
+            rw.improvement_level === 'high' ? 'badge-high' :
+            rw.improvement_level === 'medium' ? 'badge-medium' : 'badge-low';
+
+        const copyRewriteBtn = rw.rewritten_query
+            ? `<button class="btn-copy" onclick="copyToClipboard(this, ${JSON.stringify(rw.rewritten_query)})">Copy full rewrite</button>`
+            : '';
+
+        const card = document.createElement('div');
+        card.className = 'rewrite-card';
+        card.innerHTML = `
+            <div class="rewrite-header">
+                <span class="rewrite-pattern-name">${escapeHtml(rw.description)}</span>
+                <span class="improvement-badge ${badgeClass}">${escapeHtml(rw.improvement_level)}</span>
+            </div>
+            <div class="rewrite-reason">${escapeHtml(rw.reason)}</div>
+            <div class="rewrite-snippet-row">
+                <div>
+                    <div class="rewrite-snippet-label">Original</div>
+                    <div class="rewrite-code original">${escapeHtml(rw.original_snippet)}</div>
+                </div>
+                <div>
+                    <div class="rewrite-snippet-label">Suggested</div>
+                    <div class="rewrite-code">${escapeHtml(rw.suggested_rewrite)}</div>
+                </div>
+            </div>
+            <div class="rewrite-actions">
+                <button class="btn-copy" onclick="copyToClipboard(this, ${JSON.stringify(rw.suggested_rewrite)})">Copy suggestion</button>
+                ${copyRewriteBtn}
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function copyToClipboard(btn, text) {
+    navigator.clipboard.writeText(text).then(() => {
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            btn.textContent = original;
+            btn.classList.remove('copied');
+        }, 1500);
+    }).catch(() => {
+        // Fallback for environments without clipboard API
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+    });
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+}
+
+// ===== CSV / PDF Export =====
+
+function csvRow(...cells) {
+    return cells.map(c => {
+        const s = String(c == null ? '' : c).replace(/"/g, '""');
+        return /[",\n]/.test(s) ? `"${s}"` : s;
+    }).join(',');
+}
+
+function downloadFile(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function recsToCSV(recs, query) {
+    const lines = [];
+    if (query) {
+        lines.push(csvRow('Query', query));
+        lines.push('');
+    }
+    lines.push(csvRow('Table', 'Columns', 'Index Type', 'Expected Improvement %',
+                       'Current Cost', 'Estimated Cost', 'Priority', 'Warning', 'DDL'));
+    for (const r of recs) {
+        lines.push(csvRow(
+            r.table,
+            (r.columns || []).join(', '),
+            r.index_type,
+            r.expected_improvement_pct != null ? r.expected_improvement_pct.toFixed(1) : '',
+            r.current_cost != null ? r.current_cost.toFixed(2) : '',
+            r.estimated_cost != null ? r.estimated_cost.toFixed(2) : '',
+            r.priority,
+            r.warning || '',
+            r.ddl,
+        ));
+    }
+    return lines.join('\n');
+}
+
+function exportQueryCSV() {
+    if (!lastQueryResult || !lastQueryResult.recommendations.length) return;
+    const csv = recsToCSV(lastQueryResult.recommendations, lastQueryResult.query);
+    downloadFile(csv, 'index-recommendations.csv', 'text/csv');
+}
+
+function exportBatchCSV() {
+    if (!lastBatchResult) return;
+    const r = lastBatchResult;
+    const lines = [];
+
+    // Summary block
+    lines.push(csvRow('Batch Analysis Summary'));
+    lines.push(csvRow('Timestamp', r.timestamp));
+    lines.push(csvRow('Total Queries', r.total_queries));
+    lines.push(csvRow('Analysed', r.analysed_queries));
+    lines.push(csvRow('Failed', r.failed_queries));
+    lines.push(csvRow('Sequential Scans', r.total_seq_scans));
+    lines.push(csvRow('Unique Recommendations', r.unique_recommendations));
+    lines.push(csvRow('Estimated Improvement %', r.estimated_improvement_pct != null ? r.estimated_improvement_pct.toFixed(1) : ''));
+    lines.push(csvRow('Tables Affected', (r.tables_affected || []).join('; ')));
+    lines.push(csvRow('Analysis Duration (s)', r.analysis_duration_seconds != null ? r.analysis_duration_seconds.toFixed(2) : ''));
+    lines.push('');
+
+    // Top recommendations block
+    lines.push(...recsToCSV(r.top_recommendations || []).split('\n'));
+
+    downloadFile(lines.join('\n'), 'batch-analysis.csv', 'text/csv');
+}
+
+function exportQueryPDF() {
+    if (!lastQueryResult) return;
+    window.print();
+}
+
+function exportBatchPDF() {
+    if (!lastBatchResult) return;
+    window.print();
+}

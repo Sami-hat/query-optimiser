@@ -204,7 +204,7 @@ class IndexRecommender:
 
             # Recommend index on WHERE columns
             # If we have both constant filters and index columns, suggest partial index
-            # If we only have constant filters, skip (index wouldn't be useful)
+            # If we only have constant filters, recommend a regular index on those columns
             if index_columns:
                 rec = self._create_recommendation(
                     table_name=table_name,
@@ -216,7 +216,19 @@ class IndexRecommender:
                     partial_predicate=partial_predicate
                 )
                 recommendations.append(rec)
-            elif where_columns and not constant_filter_cols:
+            elif constant_filter_cols:
+                # All WHERE columns are constant equality predicates — create a regular index
+                const_cols = [col for col, _ in constant_filter_cols]
+                ordered_cols = self._order_columns_for_index(const_cols, predicate_types)
+                rec = self._create_recommendation(
+                    table_name=table_name,
+                    columns=ordered_cols,
+                    scan_info=scan,
+                    reason=f"Sequential scan on {table_name} with WHERE filter",
+                    query=query
+                )
+                recommendations.append(rec)
+            elif where_columns:
                 # All columns are non-constant, create regular index
                 ordered_cols = self._order_columns_for_index(where_columns, predicate_types)
                 rec = self._create_recommendation(

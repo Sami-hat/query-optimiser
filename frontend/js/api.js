@@ -1,9 +1,19 @@
 /**
- * API Client for PostgreSQL Performance analyzer
+ * API Client for PostgreSQL Performance Analyzer
+ *
+ * Uses same-origin requests so it works both when served by the FastAPI app
+ * (http://localhost:8000) and behind the nginx proxy (http://localhost).
+ * Falls back to localhost:8000 when opened directly from the filesystem.
  */
-class analyzerAPI {
-    constructor(baseUrl = 'http://localhost:8000') {
-        this.baseUrl = baseUrl;
+class AnalyzerAPI {
+    constructor(baseUrl = null) {
+        if (baseUrl !== null) {
+            this.baseUrl = baseUrl;
+        } else if (window.location.protocol === 'file:') {
+            this.baseUrl = 'http://localhost:8000';
+        } else {
+            this.baseUrl = '';
+        }
         this.apiKey = null;
     }
 
@@ -40,18 +50,19 @@ class analyzerAPI {
         return this.request('/health');
     }
 
-    async analyzeQuery(query, includeExplain = true) {
-        return this.request('/analyze', {
+    async analyzeQuery(query, { includeExplain = true, analyze = false } = {}) {
+        return this.request('/analyse', {
             method: 'POST',
             body: JSON.stringify({
                 query,
-                include_explain: includeExplain
+                include_explain: includeExplain,
+                analyze
             })
         });
     }
 
-    async batchanalyze(queries, options = {}) {
-        return this.request('/batch-analyze', {
+    async batchAnalyze(queries, options = {}) {
+        return this.request('/batch-analyse', {
             method: 'POST',
             body: JSON.stringify({
                 queries,
@@ -66,7 +77,7 @@ class analyzerAPI {
     }
 
     async getTableRecommendations(tableName) {
-        return this.request(`/recommendations/${tableName}`);
+        return this.request(`/recommendations/${encodeURIComponent(tableName)}`);
     }
 
     async applyIndexes(ddlStatements, dryRun = false) {
@@ -81,4 +92,4 @@ class analyzerAPI {
 }
 
 // Global API instance
-const api = new analyzerAPI();
+const api = new AnalyzerAPI();

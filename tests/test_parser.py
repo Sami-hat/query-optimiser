@@ -79,6 +79,25 @@ class TestQueryParser:
         assert 'users' in tables
         assert 'orders' in tables
 
+    def test_alias_resolution_in_column_tables(self):
+        """Qualified columns must map to real table names, not aliases.
+
+        Regression test: WHERE used to be visited before FROM, so 'u.email'
+        was recorded against the alias 'u' and recommendations never matched.
+        """
+        query = """
+            SELECT u.username, o.total FROM users u
+            JOIN orders o ON u.id = o.user_id
+            WHERE u.email = 'a@b.c' AND o.status = 'pending'
+            ORDER BY o.created_at DESC
+        """
+        parser = QueryParser(query)
+        info = parser.get_all_info()
+
+        assert info['where_column_tables'] == {'email': 'users', 'status': 'orders'}
+        assert info['order_by_column_tables'] == {'created_at': 'orders'}
+        assert info['join_column_tables'] == {'id': 'users', 'user_id': 'orders'}
+
     def test_empty_query_error(self):
         """Test that empty query raises ValueError"""
         with pytest.raises(ValueError, match="Query cannot be empty"):

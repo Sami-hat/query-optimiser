@@ -10,24 +10,36 @@ let heatmap = null;
 let lastQueryResult = null;
 let lastBatchResult = null;
 
+const EXAMPLE_QUERY = `SELECT u.username, u.email, o.total, o.created_at
+FROM orders o
+JOIN users u ON u.id = o.user_id
+WHERE o.status = 'pending'
+  AND o.created_at > '2024-01-01'
+ORDER BY o.created_at DESC
+LIMIT 50`;
+
 // DOM elements
 const statusDot = document.querySelector('.status-dot');
 const statusText = document.querySelector('.status-text');
 const queryInput = document.getElementById('query-input');
 const analyzeBtn = document.getElementById('analyze-btn');
+const exampleBtn = document.getElementById('example-btn');
 const clearBtn = document.getElementById('clear-btn');
+const analyzeCheck = document.getElementById('analyze-check');
 const resultsSection = document.getElementById('results-section');
 const loadingOverlay = document.getElementById('loading');
 
 // Metrics elements
 const execTimeEl = document.getElementById('exec-time');
+const execTimeLabelEl = document.getElementById('exec-time-label');
 const totalCostEl = document.getElementById('total-cost');
 const rowsReturnedEl = document.getElementById('rows-returned');
+const rowsLabelEl = document.getElementById('rows-label');
 const seqScansEl = document.getElementById('seq-scans');
 
 // Batch elements
 const batchQueries = document.getElementById('batch-queries');
-const batchanalyzeBtn = document.getElementById('batch-analyze-btn');
+const batchAnalyzeBtn = document.getElementById('batch-analyze-btn');
 const workersInput = document.getElementById('workers');
 const filterExistingCheck = document.getElementById('filter-existing');
 const batchResults = document.getElementById('batch-results');
@@ -41,22 +53,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     flameGraph = new FlameGraph('flamegraph');
     heatmap = new IndexHeatmap('tables-heatmap');
 
-    await checkHealth();
-    await loadTableStats();
-
     // Event listeners
-    analyzeBtn.addEventListener('click', handleanalyze);
+    analyzeBtn.addEventListener('click', handleAnalyze);
+    exampleBtn.addEventListener('click', () => { queryInput.value = EXAMPLE_QUERY; queryInput.focus(); });
     clearBtn.addEventListener('click', handleClear);
-    batchanalyzeBtn.addEventListener('click', handleBatchanalyze);
+    batchAnalyzeBtn.addEventListener('click', handleBatchAnalyze);
     refreshTablesBtn.addEventListener('click', loadTableStats);
 
-    // Enter key to analyze
+    document.getElementById('export-query-csv').addEventListener('click', exportQueryCSV);
+    document.getElementById('export-query-pdf').addEventListener('click', exportQueryPDF);
+    document.getElementById('export-batch-csv').addEventListener('click', exportBatchCSV);
+    document.getElementById('export-batch-pdf').addEventListener('click', exportBatchPDF);
+
+    // Ctrl+Enter to analyze
     queryInput.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'Enter') {
-            handleanalyze();
+            handleAnalyze();
         }
     });
+
+    await checkHealth();
+    await loadTableStats();
 });
+
+// ===== Toast notifications =====
+
+function toast(message, type = 'info', duration = 4500) {
+    const container = document.getElementById('toast-container');
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.textContent = message;
+    container.appendChild(el);
+    // trigger enter animation
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+        el.classList.remove('show');
+        el.addEventListener('transitionend', () => el.remove(), { once: true });
+        setTimeout(() => el.remove(), 600); // fallback
+    }, duration);
+}
 
 async function checkHealth() {
     try {
@@ -81,10 +116,10 @@ function showLoading(show = true) {
     loadingOverlay.style.display = show ? 'flex' : 'none';
 }
 
-async function handleanalyze() {
+async function handleAnalyze() {
     const query = queryInput.value.trim();
     if (!query) {
-        alert('Please enter a SQL query');
+        toast('Please enter a SQL query', 'warning');
         return;
     }
 
@@ -92,10 +127,13 @@ async function handleanalyze() {
     analyzeBtn.disabled = true;
 
     try {
-        const result = await api.analyzeQuery(query, true);
+        const result = await api.analyzeQuery(query, {
+            includeExplain: true,
+            analyze: analyzeCheck.checked
+        });
         displayResults(result);
     } catch (error) {
-        alert(`analysis failed: ${error.message}`);
+        toast(`Analysis failed: ${error.message}`, 'error', 7000);
     } finally {
         showLoading(false);
         analyzeBtn.disabled = false;
@@ -112,63 +150,142 @@ function displayResults(result) {
     lastQueryResult = result;
     resultsSection.style.display = 'block';
 
-    // Update metrics
-    execTimeEl.textContent = result.metrics.execution_time_ms.toFixed(2);
+    // Update metrics. Without EXPLAIN ANALYZE there is no real execution time
+    // and row counts are planner estimates.
+    if (result.analyzed) {
+        execTimeEl.textContent = result.metrics.execution_time_ms.toFixed(2);
+        execTimeLabelEl.textContent = 'Execution Time (ms)';
+        rowsLabelEl.textContent = 'Rows Returned';
+    } else {
+        execTimeEl.textContent = '—';
+        execTimeLabelEl.textContent = 'Execution Time (estimate only)';
+        rowsLabelEl.textContent = 'Rows (estimated)';
+    }
     totalCostEl.textContent = result.metrics.total_cost.toFixed(2);
     rowsReturnedEl.textContent = result.metrics.actual_rows.toLocaleString();
     seqScansEl.textContent = result.sequential_scans.length;
-
-    // Highlight if there are sequential scans
-    if (result.sequential_scans.length > 0) {
-        seqScansEl.style.color = '#ff4444';
-    } else {
-        seqScansEl.style.color = '#00ff88';
-    }
+    seqScansEl.classList.toggle('metric-bad', result.sequential_scans.length > 0);
+    seqScansEl.classList.toggle('metric-good', result.sequential_scans.length === 0);
 
     // Render flame graph
     flameGraph.render(result.explain_plan);
 
     // Render recommendations
-    displayRecommendations(result.recommendations);
+    displayRecommendations(result.recommendations, document.getElementById('recommendations'));
 
     // Show export buttons when there are recommendations
     const exportActions = document.getElementById('export-actions');
-    if (exportActions) {
-        exportActions.style.display = result.recommendations && result.recommendations.length > 0 ? 'flex' : 'none';
-    }
+    exportActions.style.display =
+        result.recommendations && result.recommendations.length > 0 ? 'flex' : 'none';
 
     // Render query rewrite suggestions
     displayRewrites(result.query_rewrites || []);
+
+    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function displayRecommendations(recommendations) {
-    const container = document.getElementById('recommendations');
+function displayRecommendations(recommendations, container) {
     container.innerHTML = '';
 
     if (!recommendations || recommendations.length === 0) {
-        container.innerHTML = '<p style="color: #00ff88;">No index recommendations - query looks optimised!</p>';
+        const p = document.createElement('p');
+        p.className = 'no-recommendations';
+        p.textContent = 'No index recommendations — query looks optimised!';
+        container.appendChild(p);
         return;
     }
 
-    recommendations.forEach((rec, index) => {
+    recommendations.forEach((rec) => {
         const priority = rec.expected_improvement_pct >= 80 ? 'high-priority' :
                         rec.expected_improvement_pct >= 50 ? 'medium-priority' : '';
         const improvementClass = rec.expected_improvement_pct >= 80 ? 'improvement-high' : 'improvement-medium';
 
         const card = document.createElement('div');
         card.className = `recommendation-card ${priority}`;
-        card.innerHTML = `
-            <div class="recommendation-header">
-                <span class="recommendation-table">${rec.table} (${rec.columns.join(', ')})</span>
-                <span class="recommendation-improvement ${improvementClass}">
-                    +${rec.expected_improvement_pct.toFixed(0)}% improvement
-                </span>
-            </div>
-            <div class="recommendation-reason">${rec.reason}</div>
-            <div class="recommendation-ddl">${rec.ddl}</div>
-        `;
+
+        const header = document.createElement('div');
+        header.className = 'recommendation-header';
+
+        const tableSpan = document.createElement('span');
+        tableSpan.className = 'recommendation-table';
+        tableSpan.textContent = `${rec.table} (${rec.columns.join(', ')})`;
+
+        header.appendChild(tableSpan);
+
+        // JOIN-based recommendations have no cost estimate; skip the empty badge
+        if (rec.expected_improvement_pct > 0) {
+            const improvementSpan = document.createElement('span');
+            improvementSpan.className = `recommendation-improvement ${improvementClass}`;
+            improvementSpan.textContent = `+${rec.expected_improvement_pct.toFixed(0)}% improvement`;
+            header.appendChild(improvementSpan);
+        }
+
+        const reason = document.createElement('div');
+        reason.className = 'recommendation-reason';
+        reason.textContent = rec.reason;
+
+        const ddl = document.createElement('div');
+        ddl.className = 'recommendation-ddl';
+        ddl.textContent = rec.ddl;
+
+        card.append(header, reason, ddl);
+
+        if (rec.warning) {
+            const warning = document.createElement('div');
+            warning.className = 'recommendation-warning';
+            warning.textContent = `⚠ ${rec.warning}`;
+            card.appendChild(warning);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'recommendation-actions';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'btn-copy';
+        copyBtn.textContent = 'Copy DDL';
+        copyBtn.addEventListener('click', () => copyToClipboard(copyBtn, rec.ddl));
+
+        const applyBtn = document.createElement('button');
+        applyBtn.className = 'btn-apply';
+        applyBtn.textContent = 'Apply Index';
+        applyBtn.addEventListener('click', () => applyRecommendation(applyBtn, rec));
+
+        actions.append(copyBtn, applyBtn);
+        card.appendChild(actions);
+
         container.appendChild(card);
     });
+}
+
+async function applyRecommendation(btn, rec) {
+    const confirmed = window.confirm(
+        `Create this index? It will be built with CREATE INDEX CONCURRENTLY ` +
+        `(no table lock, but may take a while on large tables).\n\n${rec.ddl}`
+    );
+    if (!confirmed) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Applying…';
+
+    try {
+        const response = await api.applyIndexes([rec.ddl], false);
+        const result = response.results[0];
+        if (result.success) {
+            const secs = result.execution_time_ms != null
+                ? ` in ${(result.execution_time_ms / 1000).toFixed(1)}s` : '';
+            toast(`Index created${secs}. Re-analyze the query to see the effect.`, 'success', 7000);
+            btn.textContent = 'Applied ✓';
+            loadTableStats();
+        } else {
+            toast(`Index creation failed: ${result.error}`, 'error', 8000);
+            btn.textContent = 'Apply Index';
+            btn.disabled = false;
+        }
+    } catch (error) {
+        toast(`Index creation failed: ${error.message}`, 'error', 8000);
+        btn.textContent = 'Apply Index';
+        btn.disabled = false;
+    }
 }
 
 async function loadTableStats() {
@@ -182,7 +299,11 @@ async function loadTableStats() {
         displayTableCards(stats);
     } catch (error) {
         console.error('Failed to load table stats:', error);
-        tablesListEl.innerHTML = '<p style="color: #ff4444;">Failed to load table statistics</p>';
+        tablesListEl.innerHTML = '';
+        const p = document.createElement('p');
+        p.className = 'load-error';
+        p.textContent = `Failed to load table statistics: ${error.message}`;
+        tablesListEl.appendChild(p);
     }
 }
 
@@ -191,77 +312,72 @@ function displayTableCards(stats) {
 
     stats.forEach(table => {
         const totalScans = (table.seq_scans || 0) + (table.index_scans || 0);
-        const indexPct = totalScans > 0 ? ((table.index_scans || 0) / totalScans * 100).toFixed(1) : '0';
+        const indexPct = totalScans > 0 ? ((table.index_scans || 0) / totalScans * 100) : 0;
+        const usageClass = indexPct >= 80 ? 'stat-good' : indexPct >= 50 ? 'stat-warn' : 'stat-bad';
 
         const card = document.createElement('div');
         card.className = 'table-card';
-        card.innerHTML = `
-            <h4>${table.table_name}</h4>
-            <div class="table-stats">
-                <div class="table-stat">
-                    <span class="table-stat-label">Rows:</span>
-                    <span>${(table.row_count || 0).toLocaleString()}</span>
-                </div>
-                <div class="table-stat">
-                    <span class="table-stat-label">Size:</span>
-                    <span>${table.total_size}</span>
-                </div>
-                <div class="table-stat">
-                    <span class="table-stat-label">Seq Scans:</span>
-                    <span style="color: ${table.seq_scans > 0 ? '#ff4444' : '#888'}">
-                        ${(table.seq_scans || 0).toLocaleString()}
-                    </span>
-                </div>
-                <div class="table-stat">
-                    <span class="table-stat-label">Index Scans:</span>
-                    <span style="color: ${table.index_scans > 0 ? '#00ff88' : '#888'}">
-                        ${(table.index_scans || 0).toLocaleString()}
-                    </span>
-                </div>
-                <div class="table-stat">
-                    <span class="table-stat-label">Index Usage:</span>
-                    <span style="color: ${parseFloat(indexPct) >= 80 ? '#00ff88' : parseFloat(indexPct) >= 50 ? '#ffaa00' : '#ff4444'}">
-                        ${indexPct}%
-                    </span>
-                </div>
-                <div class="table-stat">
-                    <span class="table-stat-label">Write Ratio:</span>
-                    <span>${(table.write_ratio * 100).toFixed(1)}%</span>
-                </div>
-            </div>
-        `;
+
+        const rows = [
+            ['Rows', (table.row_count || 0).toLocaleString(), ''],
+            ['Size', table.total_size || '—', ''],
+            ['Seq Scans', (table.seq_scans || 0).toLocaleString(), table.seq_scans > 0 ? 'stat-bad' : 'stat-muted'],
+            ['Index Scans', (table.index_scans || 0).toLocaleString(), table.index_scans > 0 ? 'stat-good' : 'stat-muted'],
+            ['Index Usage', totalScans > 0 ? `${indexPct.toFixed(1)}%` : '—', totalScans > 0 ? usageClass : 'stat-muted'],
+            ['Write Ratio', `${(table.write_ratio * 100).toFixed(1)}%`, ''],
+        ];
+
+        const h4 = document.createElement('h4');
+        h4.textContent = table.table_name;
+        card.appendChild(h4);
+
+        const grid = document.createElement('div');
+        grid.className = 'table-stats';
+        for (const [label, value, cls] of rows) {
+            const stat = document.createElement('div');
+            stat.className = 'table-stat';
+            const labelSpan = document.createElement('span');
+            labelSpan.className = 'table-stat-label';
+            labelSpan.textContent = `${label}:`;
+            const valueSpan = document.createElement('span');
+            if (cls) valueSpan.className = cls;
+            valueSpan.textContent = value;
+            stat.append(labelSpan, valueSpan);
+            grid.appendChild(stat);
+        }
+        card.appendChild(grid);
         tablesListEl.appendChild(card);
     });
 }
 
-async function handleBatchanalyze() {
+async function handleBatchAnalyze() {
     const queriesText = batchQueries.value.trim();
     if (!queriesText) {
-        alert('Please enter queries to analyze');
+        toast('Please enter queries to analyze', 'warning');
         return;
     }
 
-    const queries = queriesText.split('\n').filter(q => q.trim());
+    const queries = queriesText.split('\n').map(q => q.trim()).filter(Boolean);
     if (queries.length === 0) {
-        alert('No valid queries found');
+        toast('No valid queries found', 'warning');
         return;
     }
 
     showLoading(true);
-    batchanalyzeBtn.disabled = true;
+    batchAnalyzeBtn.disabled = true;
 
     try {
-        const result = await api.batchanalyze(queries, {
+        const result = await api.batchAnalyze(queries, {
             maxWorkers: parseInt(workersInput.value) || 10,
             filterExisting: filterExistingCheck.checked
         });
 
         displayBatchResults(result);
     } catch (error) {
-        alert(`Batch analysis failed: ${error.message}`);
+        toast(`Batch analysis failed: ${error.message}`, 'error', 7000);
     } finally {
         showLoading(false);
-        batchanalyzeBtn.disabled = false;
+        batchAnalyzeBtn.disabled = false;
     }
 }
 
@@ -270,53 +386,48 @@ function displayBatchResults(result) {
     batchResults.style.display = 'block';
 
     const summary = document.getElementById('batch-summary');
-    summary.innerHTML = `
-        <h3>Analysis Summary</h3>
-        <div class="batch-summary-grid">
-            <div class="summary-item">
-                <div class="summary-value">${result.total_queries}</div>
-                <div class="summary-label">Total Queries</div>
-            </div>
-            <div class="summary-item">
-                <div class="summary-value">${result.analyzed_queries}</div>
-                <div class="summary-label">analyzed</div>
-            </div>
-            <div class="summary-item">
-                <div class="summary-value" style="color: ${result.failed_queries > 0 ? '#ff4444' : '#00ff88'}">
-                    ${result.failed_queries}
-                </div>
-                <div class="summary-label">Failed</div>
-            </div>
-            <div class="summary-item">
-                <div class="summary-value">${result.total_seq_scans}</div>
-                <div class="summary-label">Seq Scans</div>
-            </div>
-            <div class="summary-item">
-                <div class="summary-value">${result.unique_recommendations}</div>
-                <div class="summary-label">Recommendations</div>
-            </div>
-            <div class="summary-item">
-                <div class="summary-value" style="color: #00ff88">${result.estimated_improvement_pct.toFixed(1)}%</div>
-                <div class="summary-label">Est. Improvement</div>
-            </div>
-            <div class="summary-item">
-                <div class="summary-value">${result.analysis_duration_seconds.toFixed(2)}s</div>
-                <div class="summary-label">Duration</div>
-            </div>
-        </div>
-    `;
+    summary.innerHTML = '';
 
-    const recommendations = document.getElementById('batch-recommendations');
-    displayRecommendations(result.top_recommendations);
+    const heading = document.createElement('h3');
+    heading.textContent = 'Analysis Summary';
+    summary.appendChild(heading);
 
-    // Copy recommendations to batch section
-    recommendations.innerHTML = document.getElementById('recommendations').innerHTML;
+    const grid = document.createElement('div');
+    grid.className = 'batch-summary-grid';
+
+    const items = [
+        [result.total_queries, 'Total Queries', ''],
+        [result.analysed_queries, 'Analyzed', ''],
+        [result.failed_queries, 'Failed', result.failed_queries > 0 ? 'stat-bad' : 'stat-good'],
+        [result.total_seq_scans, 'Seq Scans', ''],
+        [result.unique_recommendations, 'Recommendations', ''],
+        [`${result.estimated_improvement_pct.toFixed(1)}%`, 'Est. Improvement', 'stat-good'],
+        [`${result.analysis_duration_seconds.toFixed(2)}s`, 'Duration', ''],
+    ];
+
+    for (const [value, label, cls] of items) {
+        const item = document.createElement('div');
+        item.className = 'summary-item';
+        const valueDiv = document.createElement('div');
+        valueDiv.className = `summary-value ${cls}`.trim();
+        valueDiv.textContent = value;
+        const labelDiv = document.createElement('div');
+        labelDiv.className = 'summary-label';
+        labelDiv.textContent = label;
+        item.append(valueDiv, labelDiv);
+        grid.appendChild(item);
+    }
+    summary.appendChild(grid);
+
+    // Render recommendations directly into the batch container
+    displayRecommendations(result.top_recommendations, document.getElementById('batch-recommendations'));
 
     // Show batch export buttons
     const batchExport = document.getElementById('batch-export-actions');
-    if (batchExport) {
-        batchExport.style.display = result.top_recommendations && result.top_recommendations.length > 0 ? 'flex' : 'none';
-    }
+    batchExport.style.display =
+        result.top_recommendations && result.top_recommendations.length > 0 ? 'flex' : 'none';
+
+    batchResults.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // Periodic health check
@@ -341,39 +452,64 @@ function displayRewrites(rewrites) {
             rw.improvement_level === 'high' ? 'badge-high' :
             rw.improvement_level === 'medium' ? 'badge-medium' : 'badge-low';
 
-        const copyRewriteBtn = rw.rewritten_query
-            ? `<button class="btn-copy" onclick="copyToClipboard(this, ${JSON.stringify(rw.rewritten_query)})">Copy full rewrite</button>`
-            : '';
-
         const card = document.createElement('div');
         card.className = 'rewrite-card';
-        card.innerHTML = `
-            <div class="rewrite-header">
-                <span class="rewrite-pattern-name">${escapeHtml(rw.description)}</span>
-                <span class="improvement-badge ${badgeClass}">${escapeHtml(rw.improvement_level)}</span>
-            </div>
-            <div class="rewrite-reason">${escapeHtml(rw.reason)}</div>
-            <div class="rewrite-snippet-row">
-                <div>
-                    <div class="rewrite-snippet-label">Original</div>
-                    <div class="rewrite-code original">${escapeHtml(rw.original_snippet)}</div>
-                </div>
-                <div>
-                    <div class="rewrite-snippet-label">Suggested</div>
-                    <div class="rewrite-code">${escapeHtml(rw.suggested_rewrite)}</div>
-                </div>
-            </div>
-            <div class="rewrite-actions">
-                <button class="btn-copy" onclick="copyToClipboard(this, ${JSON.stringify(rw.suggested_rewrite)})">Copy suggestion</button>
-                ${copyRewriteBtn}
-            </div>
-        `;
+
+        const header = document.createElement('div');
+        header.className = 'rewrite-header';
+        const name = document.createElement('span');
+        name.className = 'rewrite-pattern-name';
+        name.textContent = rw.description;
+        const badge = document.createElement('span');
+        badge.className = `improvement-badge ${badgeClass}`;
+        badge.textContent = rw.improvement_level;
+        header.append(name, badge);
+
+        const reason = document.createElement('div');
+        reason.className = 'rewrite-reason';
+        reason.textContent = rw.reason;
+
+        const snippetRow = document.createElement('div');
+        snippetRow.className = 'rewrite-snippet-row';
+        for (const [label, code, cls] of [
+            ['Original', rw.original_snippet, 'rewrite-code original'],
+            ['Suggested', rw.suggested_rewrite, 'rewrite-code'],
+        ]) {
+            const col = document.createElement('div');
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'rewrite-snippet-label';
+            labelDiv.textContent = label;
+            const codeDiv = document.createElement('div');
+            codeDiv.className = cls;
+            codeDiv.textContent = code;
+            col.append(labelDiv, codeDiv);
+            snippetRow.appendChild(col);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'rewrite-actions';
+
+        const copySuggestionBtn = document.createElement('button');
+        copySuggestionBtn.className = 'btn-copy';
+        copySuggestionBtn.textContent = 'Copy suggestion';
+        copySuggestionBtn.addEventListener('click', () => copyToClipboard(copySuggestionBtn, rw.suggested_rewrite));
+        actions.appendChild(copySuggestionBtn);
+
+        if (rw.rewritten_query) {
+            const copyRewriteBtn = document.createElement('button');
+            copyRewriteBtn.className = 'btn-copy';
+            copyRewriteBtn.textContent = 'Copy full rewrite';
+            copyRewriteBtn.addEventListener('click', () => copyToClipboard(copyRewriteBtn, rw.rewritten_query));
+            actions.appendChild(copyRewriteBtn);
+        }
+
+        card.append(header, reason, snippetRow, actions);
         container.appendChild(card);
     });
 }
 
 function copyToClipboard(btn, text) {
-    navigator.clipboard.writeText(text).then(() => {
+    const markCopied = () => {
         const original = btn.textContent;
         btn.textContent = 'Copied!';
         btn.classList.add('copied');
@@ -381,24 +517,29 @@ function copyToClipboard(btn, text) {
             btn.textContent = original;
             btn.classList.remove('copied');
         }, 1500);
-    }).catch(() => {
-        // Fallback for environments without clipboard API
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-    });
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(markCopied).catch(() => fallbackCopy(text, markCopied));
+    } else {
+        fallbackCopy(text, markCopied);
+    }
 }
 
-function escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
+function fallbackCopy(text, onDone) {
+    // Fallback for environments without the async clipboard API (e.g. plain http)
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        onDone();
+    } finally {
+        document.body.removeChild(ta);
+    }
 }
 
 // ===== CSV / PDF Export =====

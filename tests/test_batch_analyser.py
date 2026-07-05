@@ -191,6 +191,19 @@ class TestBatchAnalyser:
                 'rows_removed_by_filter': 499999
             }
         ]
+        mock.get_column_statistics.return_value = {
+            'n_distinct': -1,
+            'null_frac': 0.0,
+            'avg_width': 32,
+            'correlation': 0.0,
+            'total_rows': 500000,
+            'n_distinct_values': 500000,
+            'has_stats': True
+        }
+        # SQL helper queries (index counts, write ratios) go through get_connection;
+        # return a real tuple so int comparisons work
+        cursor = mock.get_connection.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (0,)
         return mock
 
     def test_init(self, mock_db_connector):
@@ -302,7 +315,9 @@ class TestBatchAnalyser:
 
         assert '$1' not in replaced
         assert '$2' not in replaced
-        assert "'placeholder'" in replaced
+        # Placeholders are replaced with typed NULLs based on context
+        assert 'NULL::integer' in replaced
+        assert 'NULL::text' in replaced
 
     def test_replace_placeholders_high_numbers(self, mock_db_connector):
         """Test placeholder replacement with high numbers"""

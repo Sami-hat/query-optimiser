@@ -33,6 +33,15 @@ class ColumnExtractor:
             else:
                 self._visit_node(raw_stmt, context='root')
 
+        # Resolve any aliases recorded before their FROM clause was visited
+        # (e.g. subqueries or traversal-order effects): 'u.email' must map to
+        # 'users', not the alias 'u', or recommendations never match the table
+        for mapping in (self.where_column_tables,
+                        self.order_by_column_tables,
+                        self.join_column_tables):
+            for col, tbl in list(mapping.items()):
+                mapping[col] = self.table_aliases.get(tbl, tbl)
+
     def _visit_node(self, node, context='root', operator=None):
         """Recursively visit AST nodes"""
         if node is None:
@@ -162,6 +171,18 @@ class ColumnExtractor:
 
         # Handle SELECT statements
         if node_type == 'SelectStmt':
+            # Process FROM clause first so table aliases are registered before
+            # qualified column references are resolved
+            if hasattr(node, 'fromClause') and node.fromClause:
+                for from_item in node.fromClause:
+                    self._visit_node(from_item, context='from')
+
+            # A subquery inside a WHERE clause (e.g. id IN (SELECT user_id FROM ...))
+            # constrains its target columns too - they are semi-join index candidates
+            if context == 'where' and hasattr(node, 'targetList') and node.targetList:
+                for target in node.targetList:
+                    self._visit_node(target, context='where')
+
             # Process WHERE clause with 'where' context
             if hasattr(node, 'whereClause') and node.whereClause:
                 self._visit_node(node.whereClause, context='where')
@@ -170,30 +191,28 @@ class ColumnExtractor:
             if hasattr(node, 'sortClause') and node.sortClause:
                 for sort_item in node.sortClause:
                     self._visit_node(sort_item, context='order_by')
-
-            # Process FROM clause - keep context for recursion
-            if hasattr(node, 'fromClause') and node.fromClause:
-                for from_item in node.fromClause:
-                    self._visit_node(from_item, context='from')
             return  # Already handled all relevant parts
 
         # Handle JOIN expressions
         if node_type == 'JoinExpr':
-            # Process join conditions with 'join' context
-            if hasattr(node, 'quals') and node.quals:
-                self._visit_node(node.quals, context='join')
-
-            # Process left and right sides
+            # Process both sides first so aliases are known when the join
+            # condition's qualified columns are resolved
             if hasattr(node, 'larg') and node.larg:
                 self._visit_node(node.larg, context='from')
             if hasattr(node, 'rarg') and node.rarg:
                 self._visit_node(node.rarg, context='from')
+
+            # Process join conditions with 'join' context
+            if hasattr(node, 'quals') and node.quals:
+                self._visit_node(node.quals, context='join')
             return  # Already handled all relevant parts
 
         # For all other node types, recursively visit all attributes
-        # This handles A_Expr, SortBy, and other intermediate nodes
+        # This handles A_Expr, SortBy, SubLink and other intermediate nodes
         # Common attributes to check across different node types
-        common_attrs = ['lexpr', 'rexpr', 'node', 'expr', 'arg', 'args', 'val', 'sortby']
+        # 'testexpr'/'subselect' cover SubLink nodes (e.g. col IN (SELECT ...))
+        common_attrs = ['lexpr', 'rexpr', 'node', 'expr', 'arg', 'args', 'val', 'sortby',
+                        'testexpr', 'subselect']
 
         for attr_name in common_attrs:
             if hasattr(node, attr_name):

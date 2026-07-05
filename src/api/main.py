@@ -212,8 +212,14 @@ async def analyse_query(
     and index recommendations.
     """
     try:
-        # Get EXPLAIN plan
-        explain_output = db.get_explain_plan(request.query)
+        # Get EXPLAIN plan (EXPLAIN ANALYZE if requested - SELECT queries only,
+        # guarded by db.get_explain_plan which refuses ANALYZE on DML/DDL)
+        statement_timeout_ms = int(os.getenv("STATEMENT_TIMEOUT_MS", "30000"))
+        explain_output = db.get_explain_plan(
+            request.query,
+            analyze=request.analyze,
+            statement_timeout_ms=statement_timeout_ms,
+        )
 
         # Extract metrics
         metrics = db.extract_execution_metrics(explain_output)
@@ -235,6 +241,7 @@ async def analyse_query(
         # Build response
         return AnalyseQueryResponse(
             query=request.query,
+            analyzed=explain_output.get('analyzed', False),
             metrics=ExecutionMetrics(
                 execution_time_ms=metrics.get('execution_time', 0),
                 planning_time_ms=metrics.get('planning_time', 0),

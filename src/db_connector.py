@@ -80,12 +80,22 @@ class DatabaseConnector:
         """
         conn = None
         try:
-            conn = self.connection_pool.getconn()
+            try:
+                conn = self.connection_pool.getconn()
+            except PsycopgError as e:
+                raise ConnectionError(f"Failed to get connection from pool: {e}")
+            # Errors raised by the caller's queries must propagate unchanged so
+            # they can be classified (e.g. ProgrammingError -> 400 Invalid query)
             yield conn
-        except PsycopgError as e:
-            raise ConnectionError(f"Failed to get connection from pool: {e}")
         finally:
             if conn:
+                # Never return a connection mid-transaction: a failed query would
+                # leave it aborted and poison the next request that gets it
+                try:
+                    if not conn.autocommit:
+                        conn.rollback()
+                except Exception:
+                    pass
                 self.connection_pool.putconn(conn)
 
     def _detect_query_type(self, query: str) -> str:
@@ -178,6 +188,9 @@ class DatabaseConnector:
                         'query_type': query_type
                     }
 
+        except psycopg2.ProgrammingError as e:
+            # Syntax errors, unknown tables/columns etc. - a client problem, not ours
+            raise ValueError(f"Invalid query: {e}")
         except PsycopgError as e:
             raise RuntimeError(f"Failed to execute EXPLAIN: {e}")
 
@@ -202,7 +215,8 @@ class DatabaseConnector:
             'execution_time': plan.get('Execution Time', 0),
             'planning_time': plan.get('Planning Time', 0),
             'total_cost': plan['Plan'].get('Total Cost', 0),
-            'actual_rows': plan['Plan'].get('Actual Rows', 0),
+            # Plain EXPLAIN has no 'Actual Rows'; fall back to the planner's estimate
+            'actual_rows': plan['Plan'].get('Actual Rows', plan['Plan'].get('Plan Rows', 0)),
             'node_type': plan['Plan'].get('Node Type', 'Unknown'),
             'startup_cost': plan['Plan'].get('Startup Cost', 0),
         }

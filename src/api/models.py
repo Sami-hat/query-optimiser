@@ -9,6 +9,11 @@ class AnalyseQueryRequest(BaseModel):
     """Request model for single query analysis"""
     query: str = Field(..., min_length=1, description="SQL query to analyse")
     include_explain: bool = Field(True, description="Include full EXPLAIN plan in response")
+    analyze: bool = Field(
+        False,
+        description="Run EXPLAIN ANALYZE (actually executes the query). "
+                    "Only permitted for SELECT queries; gives real execution times and row counts."
+    )
 
 
 class BatchAnalyseRequest(BaseModel):
@@ -75,6 +80,7 @@ class ExecutionMetrics(BaseModel):
 class AnalyseQueryResponse(BaseModel):
     """Response model for single query analysis"""
     query: str
+    analyzed: bool = False  # True when EXPLAIN ANALYZE ran (metrics are real, not estimates)
     metrics: ExecutionMetrics
     sequential_scans: List[SequentialScanInfo]
     recommendations: List[IndexRecommendationResponse]

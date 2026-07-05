@@ -54,6 +54,8 @@ db-optimisation/
             api.js               # API client
             heatmap.js           # Heatmap visualization
             flamegraph.js        # Flamegraph visualization
+            vendor/
+                d3.v7.min.js     # D3.js (vendored, no CDN required)
 
     Dockerfile                   # Application container
     docker-compose.yml           # Local development stack
@@ -135,7 +137,7 @@ make setup-test
    - Frontend: http://localhost
    - API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
-   - Database: localhost:5432
+   - Database: localhost:5433
 
 Available make commands:
 ```bash
@@ -172,34 +174,30 @@ db = DatabaseConnector(
 
 # Analyze query
 query = """
-SELECT u.name, u.email, o.total
+SELECT u.username, u.email, o.total
 FROM users u
 JOIN orders o ON u.id = o.user_id
-WHERE u.status = 'active' AND o.created_at > '2024-01-01'
+WHERE o.status = 'pending' AND o.created_at > '2024-01-01'
 ORDER BY o.created_at DESC
 LIMIT 100
 """
-
-# Parse query
-parser = QueryParser(query)
-parsed = parser.get_all_info()
 
 # Get EXPLAIN plan (analyze=False for safety, no data modification)
 plan = db.get_explain_plan(query, analyze=False)
 
 # Generate recommendations
 recommender = IndexRecommender(db)
-recommendations = recommender.recommend_indexes(query, plan, parsed)
+recommendations = recommender.analyse_query(query, plan)
 
 # Display recommendations
 for rec in recommendations:
     print(f"Table: {rec.table_name}")
-    print(f"Index: CREATE INDEX {rec.index_name} ON {rec.table_name} ({', '.join(rec.columns)})")
+    print(f"DDL:   {rec.get_ddl()}")
     if rec.partial_index_predicate:
         print(f"Partial: WHERE {rec.partial_index_predicate}")
     if rec.include_columns:
         print(f"Covering: INCLUDE ({', '.join(rec.include_columns)})")
-    print(f"Estimated Improvement: {rec.estimated_improvement:.1f}%")
+    print(f"Estimated Improvement: {rec.expected_improvement_pct:.1f}%")
     print(f"Reason: {rec.reason}")
     if rec.warning:
         print(f"Warning: {rec.warning}")
@@ -211,42 +209,37 @@ for rec in recommendations:
 Analyze all queries from pg_stat_statements:
 
 ```python
+from src.db_connector import DatabaseConnector
 from src.batch_analyser import BatchAnalyser
+
+db = DatabaseConnector()  # reads DB_* environment variables
 
 # Initialize batch analyser
 analyser = BatchAnalyser(
-    host='localhost',
-    port=5432,
-    database='mydb',
-    user='postgres',
-    password='password'
+    db,
+    max_workers=10,
+    min_calls=10,          # Only queries executed at least 10 times
+    min_mean_time_ms=100,  # Only queries averaging >= 100ms
 )
 
-# Analyze top 50 queries by execution time
-results = analyser.analyse_top_queries(
-    limit=50,
-    min_calls=10,  # Only queries executed at least 10 times
-    parallel=True   # Use parallel processing
-)
+# Analyze the top queries recorded by pg_stat_statements
+report = analyser.analyse_from_pg_stat_statements(limit=50)
 
-# Display results
-for result in results:
-    print(f"Query: {result['query'][:100]}...")
-    print(f"Execution Count: {result['calls']}")
-    print(f"Total Time: {result['total_time']:.2f}ms")
-    print(f"Recommendations: {len(result['recommendations'])}")
-    for rec in result['recommendations']:
-        print(f"  - {rec.index_name}: {rec.estimated_improvement:.1f}% improvement")
-    print()
+# Or analyse an explicit list of queries in parallel
+# report = analyser.analyse_queries(["SELECT ...", "SELECT ..."])
+
+print(report.get_summary())
+for rec in report.top_recommendations:
+    print(f"{rec['ddl']}  (+{rec['expected_improvement_pct']:.1f}%)")
 ```
 
 ### REST API
 
-Start the API server:
+Start the API server (serves the web dashboard at `/` as well):
 
 ```bash
-cd src/api
-uvicorn main:app --host 0.0.0.0 --port 8000
+python run_api.py            # http://localhost:8000
+python run_api.py --reload   # development mode
 ```
 
 API endpoints:
@@ -262,13 +255,22 @@ curl -X POST http://localhost:8000/analyse \
   -H "Content-Type: application/json" \
   -d '{
     "query": "SELECT * FROM users WHERE email = '\''test@example.com'\''",
-    "include_explain": true
+    "include_explain": true,
+    "analyze": false
   }'
 ```
 
-Response includes index recommendations **and** query rewrite suggestions:
+Set `"analyze": true` to run `EXPLAIN ANALYZE` and get real execution times and
+row counts. This actually executes the query, so it is only permitted for
+SELECT statements (DML/DDL are refused) and runs under a statement timeout.
+
+Response includes execution metrics, sequential scans, index recommendations
+**and** query rewrite suggestions:
 ```json
 {
+  "analyzed": false,
+  "metrics": {...},
+  "sequential_scans": [...],
   "recommendations": [...],
   "query_rewrites": [
     {
@@ -285,39 +287,44 @@ Response includes index recommendations **and** query rewrite suggestions:
 
 **3. Batch Analysis**
 ```bash
-curl -X POST http://localhost:8000/api/batch-analyze \
+curl -X POST http://localhost:8000/batch-analyse \
   -H "Content-Type: application/json" \
   -d '{
-    "limit": 20,
-    "min_calls": 5
+    "queries": ["SELECT * FROM users WHERE country = '\''FR'\''"],
+    "max_workers": 10,
+    "filter_existing": false
   }'
 ```
 
-**4. Get Recommendations**
+**4. Get Table Recommendations & Existing Indexes**
 ```bash
-curl http://localhost:8000/api/recommendations?query_id=abc123
+curl http://localhost:8000/recommendations/users
 ```
 
-**5. Get Database Statistics**
+**5. Get Table Statistics**
 ```bash
-curl http://localhost:8000/api/stats
+curl http://localhost:8000/tables
 ```
 
-**6. Apply Recommendation**
+**6. Apply Index Recommendations**
 ```bash
-curl -X POST http://localhost:8000/api/apply \
+curl -X POST http://localhost:8000/apply-indexes \
   -H "Content-Type: application/json" \
   -d '{
-    "recommendation_id": "rec_xyz789",
+    "ddl_statements": ["CREATE INDEX idx_users_country ON users (country);"],
     "dry_run": true
   }'
 ```
+
+Indexes are created with `CREATE INDEX CONCURRENTLY` (no table lock). Only
+`CREATE [UNIQUE] INDEX` statements are accepted.
 
 ## Query Rewrite Suggestions
 
 The rewrite engine (`src/query_rewriter.py`) scans the parsed AST for seven SQL anti-patterns and returns structured suggestions alongside index recommendations. It requires no database connection and runs on every `/analyse` request.
 
 | Pattern | Trigger | Impact |
+|---------|---------|--------|
 | `select_star` | `SELECT *` | medium |
 | `leading_wildcard_like` | `LIKE '%value'` or `ILIKE '%...'` | high |
 | `not_in_subquery` | `col NOT IN (SELECT ...)` | high |
@@ -420,17 +427,27 @@ Logs are available in:
 - Docker: `docker logs <container-id>`
 - AWS: CloudWatch Logs group `/ecs/pg-optimizer`
 
+## Web Dashboard
+
+The frontend (served at http://localhost via nginx, or http://localhost:8000
+directly from the API) provides:
+
+- Single-query analysis with optional `EXPLAIN ANALYZE` for real timings
+- Execution plan visualisation (flame graph, coloured by node type)
+- Index recommendations with one-click **Copy DDL** and **Apply Index**
+  (applied with `CREATE INDEX CONCURRENTLY`)
+- SQL anti-pattern rewrite suggestions with severity badges
+- Table statistics with an index-usage heatmap
+- Batch analysis with aggregated recommendations
+- CSV and PDF export for single-query and batch results
+
 ## Performance
 
-Typical performance improvements:
-- Sequential scans reduced by 90-99%
-- Query execution time reduced by 50-99.5%
-- Most recommendations show 80%+ improvement
-
-Example results:
-- E-commerce query: 1.2s -> 6ms (99.5% improvement)
-- User lookup: 450ms -> 2ms (99.6% improvement)
-- Report generation: 5.3s -> 180ms (96.6% improvement)
+Improvements depend entirely on your schema, data distribution and workload.
+Indicative results from the bundled test database (500K users, 1M orders):
+- Filtered order lookup: sequential scan -> partial index, ~95% cost reduction
+- Highly selective lookups typically show 90%+ estimated improvement
+- Low-selectivity predicates are flagged as unlikely to benefit
 
 ## License
 

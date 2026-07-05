@@ -5,7 +5,7 @@
 class IndexHeatmap {
     constructor(containerId) {
         this.container = d3.select(`#${containerId}`);
-        this.margin = { top: 30, right: 20, bottom: 50, left: 100 };
+        this.margin = { top: 30, right: 110, bottom: 50, left: 100 };
     }
 
     render(tableStats) {
@@ -13,7 +13,7 @@ class IndexHeatmap {
 
         if (!tableStats || tableStats.length === 0) {
             this.container.append('p')
-                .style('color', '#aaa')
+                .style('color', '#94a3b8')
                 .style('text-align', 'center')
                 .text('No table statistics available');
             return;
@@ -46,7 +46,7 @@ class IndexHeatmap {
         svg.append('g')
             .call(d3.axisLeft(yScale))
             .selectAll('text')
-            .style('fill', '#00d9ff')
+            .style('fill', '#38bdf8')
             .style('font-size', '12px');
 
         // Draw stacked bars
@@ -63,7 +63,7 @@ class IndexHeatmap {
             .attr('x', 0)
             .attr('width', d => xScale(d.seq_scans || 0))
             .attr('height', yScale.bandwidth())
-            .attr('fill', '#ff4444')
+            .attr('fill', '#f87171')
             .attr('rx', 3);
 
         // Index scans (green)
@@ -72,7 +72,7 @@ class IndexHeatmap {
             .attr('x', d => xScale(d.seq_scans || 0))
             .attr('width', d => xScale(d.index_scans || 0))
             .attr('height', yScale.bandwidth())
-            .attr('fill', '#00ff88')
+            .attr('fill', '#34d399')
             .attr('rx', 3);
 
         // Labels
@@ -80,7 +80,7 @@ class IndexHeatmap {
             .attr('x', d => xScale((d.seq_scans || 0) + (d.index_scans || 0)) + 5)
             .attr('y', yScale.bandwidth() / 2)
             .attr('dy', '0.35em')
-            .style('fill', '#aaa')
+            .style('fill', '#94a3b8')
             .style('font-size', '11px')
             .text(d => {
                 const total = (d.seq_scans || 0) + (d.index_scans || 0);
@@ -96,12 +96,12 @@ class IndexHeatmap {
             .attr('x', 0)
             .attr('width', 15)
             .attr('height', 15)
-            .attr('fill', '#ff4444');
+            .attr('fill', '#f87171');
 
         legend.append('text')
             .attr('x', 20)
             .attr('y', 12)
-            .style('fill', '#aaa')
+            .style('fill', '#94a3b8')
             .style('font-size', '11px')
             .text('Sequential Scans');
 
@@ -109,12 +109,12 @@ class IndexHeatmap {
             .attr('x', 130)
             .attr('width', 15)
             .attr('height', 15)
-            .attr('fill', '#00ff88');
+            .attr('fill', '#34d399');
 
         legend.append('text')
             .attr('x', 150)
             .attr('y', 12)
-            .style('fill', '#aaa')
+            .style('fill', '#94a3b8')
             .style('font-size', '11px')
             .text('Index Scans');
     }

@@ -148,7 +148,10 @@ class TestDatabaseConnector:
             connector.connection_pool.getconn.return_value = mock_conn
             connector.connection_pool.putconn = Mock()
 
-            result = connector.get_explain_plan("SELECT * FROM users WHERE email = 'test@example.com'")
+            result = connector.get_explain_plan(
+                "SELECT * FROM users WHERE email = 'test@example.com'",
+                analyze=True
+            )
 
             assert 'query' in result
             assert 'explain_plan' in result

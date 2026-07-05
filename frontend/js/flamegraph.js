@@ -12,22 +12,22 @@ class FlameGraph {
 
     createColorScale() {
         return {
-            'Seq Scan': '#ff4444',
-            'Index Scan': '#00ff88',
-            'Index Only Scan': '#00dd66',
-            'Bitmap Heap Scan': '#88cc00',
-            'Bitmap Index Scan': '#66aa00',
-            'Nested Loop': '#ffaa00',
-            'Hash Join': '#ff8800',
-            'Merge Join': '#ff6600',
-            'Hash': '#aa88ff',
-            'Sort': '#8866ff',
-            'Aggregate': '#6644ff',
-            'Gather': '#00d9ff',
-            'Gather Merge': '#00b8d9',
-            'Result': '#888888',
-            'Limit': '#aaaaaa',
-            'default': '#666666'
+            'Seq Scan': '#f87171',
+            'Index Scan': '#34d399',
+            'Index Only Scan': '#10b981',
+            'Bitmap Heap Scan': '#a3e635',
+            'Bitmap Index Scan': '#84cc16',
+            'Nested Loop': '#fbbf24',
+            'Hash Join': '#f59e0b',
+            'Merge Join': '#f97316',
+            'Hash': '#a78bfa',
+            'Sort': '#8b5cf6',
+            'Aggregate': '#7c3aed',
+            'Gather': '#38bdf8',
+            'Gather Merge': '#0ea5e9',
+            'Result': '#64748b',
+            'Limit': '#94a3b8',
+            'default': '#475569'
         };
     }
 
@@ -92,7 +92,8 @@ class FlameGraph {
 
     calculateHeight(hierarchy) {
         const levels = this.countLevels(hierarchy);
-        return Math.max(200, levels * 50 + 50);
+        // barHeight (35) + padding (2) per level, plus a little breathing room
+        return Math.max(120, levels * 37 + 15);
     }
 
     countLevels(node, level = 0) {
@@ -121,7 +122,7 @@ class FlameGraph {
             .attr('height', barHeight)
             .attr('rx', 3)
             .attr('fill', d => this.getNodeColor(d.name))
-            .attr('stroke', '#1a1a2e')
+            .attr('stroke', '#0f172a')
             .attr('stroke-width', 1)
             .on('mouseover', (event, d) => this.showTooltip(event, d))
             .on('mouseout', () => this.hideTooltip());

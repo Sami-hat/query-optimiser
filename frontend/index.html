@@ -3,14 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PostgreSQL Performance analyzer</title>
+    <title>PostgreSQL Performance Analyzer</title>
     <link rel="stylesheet" href="/static/css/styles.css">
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="/static/js/vendor/d3.v7.min.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>PostgreSQL Performance analyzer</h1>
+            <div class="header-title">
+                <h1>PostgreSQL Performance Analyzer</h1>
+                <p class="subtitle">Query analysis, index recommendations &amp; anti-pattern detection</p>
+            </div>
             <div class="status-indicator" id="status">
                 <span class="status-dot"></span>
                 <span class="status-text">Connecting...</span>
@@ -20,24 +23,31 @@
         <main>
             <!-- Query Input Section -->
             <section class="query-section">
-                <h2>analyze Query</h2>
+                <h2>Analyze Query</h2>
                 <div class="query-input-wrapper">
-                    <textarea id="query-input" placeholder="Enter your SQL query here...
+                    <textarea id="query-input" spellcheck="false" placeholder="Enter your SQL query here...
 Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
                     <div class="query-controls">
-                        <button id="analyze-btn" class="btn primary">analyze Query</button>
+                        <button id="analyze-btn" class="btn primary">Analyze Query</button>
+                        <button id="example-btn" class="btn secondary">Load Example</button>
                         <button id="clear-btn" class="btn secondary">Clear</button>
+                        <label class="checkbox-label" title="Actually executes the query (SELECT only) to capture real timings and row counts">
+                            <input type="checkbox" id="analyze-check">
+                            Run EXPLAIN ANALYZE <span class="hint">(executes query)</span>
+                        </label>
+                        <span class="kbd-hint">Ctrl+Enter to analyze</span>
                     </div>
                 </div>
             </section>
 
             <!-- Results Section -->
             <section class="results-section" id="results-section" style="display: none;">
+                <h2>Results</h2>
                 <!-- Metrics Cards -->
                 <div class="metrics-row">
                     <div class="metric-card">
                         <div class="metric-value" id="exec-time">-</div>
-                        <div class="metric-label">Execution Time (ms)</div>
+                        <div class="metric-label" id="exec-time-label">Execution Time (ms)</div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-value" id="total-cost">-</div>
@@ -45,7 +55,7 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
                     </div>
                     <div class="metric-card">
                         <div class="metric-value" id="rows-returned">-</div>
-                        <div class="metric-label">Rows Returned</div>
+                        <div class="metric-label" id="rows-label">Rows</div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-value" id="seq-scans">-</div>
@@ -55,7 +65,7 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
 
                 <!-- Flame Graph -->
                 <div class="visualization-container">
-                    <h3>Execution Plan (Flame Graph)</h3>
+                    <h3>Execution Plan</h3>
                     <div id="flamegraph"></div>
                 </div>
 
@@ -64,8 +74,8 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
                     <div class="section-header">
                         <h3>Index Recommendations</h3>
                         <div class="export-actions" id="export-actions" style="display:none;">
-                            <button class="btn-export" onclick="exportQueryCSV()">Export CSV</button>
-                            <button class="btn-export" onclick="exportQueryPDF()">Export PDF</button>
+                            <button class="btn-export" id="export-query-csv">Export CSV</button>
+                            <button class="btn-export" id="export-query-pdf">Export PDF</button>
                         </div>
                     </div>
                     <div id="recommendations"></div>
@@ -80,8 +90,8 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
 
             <!-- Tables Overview Section -->
             <section class="tables-section">
-                <h2>Table Statistics</h2>
-                <div class="tables-controls">
+                <div class="section-header">
+                    <h2>Table Statistics</h2>
                     <button id="refresh-tables" class="btn secondary">Refresh</button>
                 </div>
                 <div id="tables-heatmap"></div>
@@ -92,22 +102,22 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
             <section class="batch-section">
                 <h2>Batch Analysis</h2>
                 <div class="batch-input-wrapper">
-                    <textarea id="batch-queries" placeholder="Enter multiple queries (one per line)..."></textarea>
+                    <textarea id="batch-queries" spellcheck="false" placeholder="Enter multiple queries (one per line)..."></textarea>
                     <div class="batch-controls">
                         <label>
                             Workers: <input type="number" id="workers" value="10" min="1" max="20">
                         </label>
-                        <label>
-                            <input type="checkbox" id="filter-existing"> Filter existing indexes
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="filter-existing"> Skip already-indexed columns
                         </label>
-                        <button id="batch-analyze-btn" class="btn primary">analyze Batch</button>
+                        <button id="batch-analyze-btn" class="btn primary">Analyze Batch</button>
                     </div>
                 </div>
                 <div id="batch-results" style="display: none;">
                     <div class="batch-summary" id="batch-summary"></div>
                     <div class="batch-export-actions" id="batch-export-actions" style="display:none;">
-                        <button class="btn-export" onclick="exportBatchCSV()">Export CSV</button>
-                        <button class="btn-export" onclick="exportBatchPDF()">Export PDF</button>
+                        <button class="btn-export" id="export-batch-csv">Export CSV</button>
+                        <button class="btn-export" id="export-batch-pdf">Export PDF</button>
                     </div>
                     <div class="batch-recommendations" id="batch-recommendations"></div>
                 </div>
@@ -115,14 +125,17 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
         </main>
 
         <footer>
-            <p>PostgreSQL Performance analyzer v1.0.0</p>
+            <p>PostgreSQL Performance Analyzer v1.0.0</p>
         </footer>
     </div>
+
+    <!-- Toast notifications -->
+    <div class="toast-container" id="toast-container"></div>
 
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loading" style="display: none;">
         <div class="spinner"></div>
-        <p>analyzing...</p>
+        <p>Analyzing...</p>
     </div>
 
     <script src="/static/js/api.js"></script>

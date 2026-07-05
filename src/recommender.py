@@ -287,11 +287,73 @@ class IndexRecommender:
         # Prioritize and deduplicate
         recommendations = self._prioritize_recommendations(recommendations)
 
-        # Check for over-indexing and add warnings
         if self.db_connector:
+            # Don't recommend indexes that already exist
+            recommendations = self._filter_already_indexed(recommendations)
+            # Check for over-indexing and add warnings
             recommendations = self._add_over_indexing_warnings(recommendations)
 
         return recommendations
+
+    def _get_existing_index_columns(self, table_name: str) -> List[tuple]:
+        """
+        Get the column lists of existing indexes on a table.
+
+        Returns:
+            List of tuples of lower-cased column names, one per index
+        """
+        if not self.db_connector:
+            return []
+
+        sql = """
+            SELECT indexdef
+            FROM pg_indexes
+            WHERE schemaname = 'public' AND tablename = %s
+        """
+
+        import re
+        index_columns = []
+        try:
+            with self.db_connector.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql, (table_name,))
+                    for (indexdef,) in cursor.fetchall():
+                        match = re.search(r'\(([^)]+)\)', indexdef)
+                        if match:
+                            cols = tuple(
+                                c.strip().strip('"').lower()
+                                for c in match.group(1).split(',')
+                            )
+                            index_columns.append(cols)
+        except Exception:
+            return []
+
+        return index_columns
+
+    def _filter_already_indexed(
+        self,
+        recommendations: List[IndexRecommendation]
+    ) -> List[IndexRecommendation]:
+        """
+        Drop recommendations whose columns are already the leading columns
+        of an existing index on the same table.
+        """
+        existing_by_table: Dict[str, List[tuple]] = {}
+        filtered = []
+
+        for rec in recommendations:
+            if rec.table_name not in existing_by_table:
+                existing_by_table[rec.table_name] = self._get_existing_index_columns(rec.table_name)
+
+            rec_cols = tuple(c.lower() for c in rec.columns)
+            covered = any(
+                existing[:len(rec_cols)] == rec_cols
+                for existing in existing_by_table[rec.table_name]
+            )
+            if not covered:
+                filtered.append(rec)
+
+        return filtered
 
     def _calculate_selectivity_from_stats(
         self,

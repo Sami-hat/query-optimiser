@@ -70,8 +70,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
+      # Defaults to the bundled postgres service. To analyse your own database,
+      # set APP_DB_HOST/APP_DB_PORT in .env (use host.docker.internal to reach a
+      # database running on the Docker host).
+      DB_HOST: ${APP_DB_HOST:-postgres}
+      DB_PORT: ${APP_DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-pg_analyser}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
@@ -86,6 +89,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Lets DB_HOST=host.docker.internal reach a database on the Docker host (Linux)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - analyser-network
     restart: unless-stopped

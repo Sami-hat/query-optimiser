@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs shell db-shell setup-test clean health status
+.PHONY: help build up down restart logs shell db-shell setup-test demo-reset clean health status
 
 help:
 	@echo "PostgreSQL Query Optimizer - Docker Commands"
@@ -15,7 +15,8 @@ help:
 	@echo "  logs-db      View database logs"
 	@echo "  shell        Access application shell"
 	@echo "  db-shell     Access PostgreSQL shell"
-	@echo "  setup-test   Set up test database"
+	@echo "  setup-test   Set up test database (destructive: drops demo tables)"
+	@echo "  demo-reset   Drop indexes created during a demo (makes 'before' slow again)"
 	@echo "  health       Check health of all services"
 	@echo "  status       Show status of all services"
 	@echo "  clean        Stop services and remove volumes"
@@ -60,6 +61,29 @@ db-shell:
 setup-test:
 	@echo "Setting up test database..."
 	$(DOCKER_COMPOSE) exec app python3 scripts/setup_test_db.py
+
+# Drops every index the demo may have created, keeping the ones setup_test_db.py
+# seeds (primary keys, unique constraints, and the foreign-key indexes). Run this
+# before a demo so the "before" query is slow again.
+demo-reset:
+	@$(DOCKER_COMPOSE) exec -T postgres psql -U $${DB_USER:-postgres} -d $${DB_NAME:-pg_analyser} -q -c "\
+	DO \$$\$$ \
+	DECLARE r RECORD; \
+	BEGIN \
+	  FOR r IN \
+	    SELECT indexname FROM pg_indexes \
+	    WHERE schemaname = 'public' \
+	      AND indexname NOT IN ( \
+	        'idx_products_category', 'idx_orders_user', 'idx_order_items_order', \
+	        'idx_order_items_product', 'idx_reviews_product', 'idx_reviews_user') \
+	      AND indexname NOT IN ( \
+	        SELECT conname FROM pg_constraint WHERE contype IN ('p','u')) \
+	  LOOP \
+	    EXECUTE format('DROP INDEX IF EXISTS public.%I', r.indexname); \
+	    RAISE NOTICE 'dropped %', r.indexname; \
+	  END LOOP; \
+	END \$$\$$;"
+	@echo "Demo indexes dropped - 'before' queries are slow again."
 
 health:
 	@echo "Checking service health..."

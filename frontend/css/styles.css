@@ -349,6 +349,88 @@ section h3 {
     color: var(--text-secondary);
 }
 
+/* Existing indexes (expandable per table card) */
+.table-indexes-toggle {
+    margin-top: 12px;
+    padding: 5px 10px;
+    font-size: 12px;
+    background: transparent;
+    color: var(--accent-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+}
+
+.table-indexes-toggle:hover {
+    border-color: var(--accent-primary);
+}
+
+.table-indexes {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.index-item {
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.index-name {
+    color: var(--accent-primary);
+    font-weight: 600;
+}
+
+.index-cols {
+    color: var(--text-primary);
+}
+
+.index-badge {
+    margin-left: 6px;
+    padding: 1px 6px;
+    font-size: 10px;
+    border-radius: 8px;
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--accent-primary);
+    letter-spacing: 0.5px;
+}
+
+.index-partial {
+    color: var(--accent-warning);
+}
+
+.index-empty {
+    color: var(--text-secondary);
+}
+
+/* Existing indexes shown inline under a query's recommendations */
+.existing-indexes-inline {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+}
+
+.existing-indexes-heading {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.existing-indexes-inline .table-indexes {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
 /* Batch analysis */
 .batch-controls label {
     display: flex;

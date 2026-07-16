@@ -173,6 +173,11 @@ function displayResults(result) {
     // Render recommendations
     displayRecommendations(result.recommendations, document.getElementById('recommendations'));
 
+    // Under the recommendations, show the indexes each affected table already has —
+    // makes it clear why these columns aren't covered yet (and why already-indexed
+    // columns, like a join key, weren't recommended).
+    showExistingIndexesInline(result.recommendations);
+
     // Show export buttons when there are recommendations
     const exportActions = document.getElementById('export-actions');
     exportActions.style.display =
@@ -346,7 +351,117 @@ function displayTableCards(stats) {
             grid.appendChild(stat);
         }
         card.appendChild(grid);
+
+        // Expandable list of the indexes that already exist on this table.
+        // Lazily fetched from /recommendations/{table} on first expand.
+        const toggle = document.createElement('button');
+        toggle.className = 'table-indexes-toggle';
+        toggle.textContent = 'Show existing indexes';
+        const indexesBox = document.createElement('div');
+        indexesBox.className = 'table-indexes';
+        indexesBox.style.display = 'none';
+        let loaded = false;
+
+        toggle.addEventListener('click', async () => {
+            const isOpen = indexesBox.style.display !== 'none';
+            if (isOpen) {
+                indexesBox.style.display = 'none';
+                toggle.textContent = 'Show existing indexes';
+                return;
+            }
+            indexesBox.style.display = 'block';
+            toggle.textContent = 'Hide existing indexes';
+            if (!loaded) {
+                indexesBox.textContent = 'Loading…';
+                try {
+                    const data = await api.getTableRecommendations(table.table_name);
+                    renderExistingIndexes(indexesBox, data.existing_indexes || []);
+                    loaded = true;
+                } catch (err) {
+                    indexesBox.textContent = `Failed to load indexes: ${err.message}`;
+                }
+            }
+        });
+
+        card.append(toggle, indexesBox);
         tablesListEl.appendChild(card);
+    });
+}
+
+// After a single-query analysis, list the existing indexes on each recommended
+// table, appended below the recommendation cards.
+async function showExistingIndexesInline(recommendations) {
+    const container = document.getElementById('recommendations');
+    if (!recommendations || recommendations.length === 0) return;
+
+    const tables = [...new Set(recommendations.map(r => r.table))];
+    for (const table of tables) {
+        try {
+            const data = await api.getTableRecommendations(table);
+            const block = document.createElement('div');
+            block.className = 'existing-indexes-inline';
+
+            const heading = document.createElement('div');
+            heading.className = 'existing-indexes-heading';
+            heading.textContent = `Existing indexes on ${table}`;
+            block.appendChild(heading);
+
+            const list = document.createElement('div');
+            list.className = 'table-indexes';
+            renderExistingIndexes(list, data.existing_indexes || []);
+            block.appendChild(list);
+
+            container.appendChild(block);
+        } catch (err) {
+            // non-fatal — the recommendation is still shown without this context
+            console.error(`Could not load existing indexes for ${table}:`, err);
+        }
+    }
+}
+
+// Render the existing-index list for one table into `container`.
+function renderExistingIndexes(container, indexes) {
+    container.innerHTML = '';
+    if (!indexes.length) {
+        const p = document.createElement('p');
+        p.className = 'index-empty';
+        p.textContent = 'No indexes on this table.';
+        container.appendChild(p);
+        return;
+    }
+    indexes.forEach(idx => {
+        const def = idx.definition || '';
+        const colsMatch = def.match(/\(([^)]+)\)/);
+        const cols = colsMatch ? colsMatch[1] : '';
+        const isUnique = /CREATE\s+UNIQUE/i.test(def);
+        const whereMatch = def.match(/\bWHERE\b(.+)$/i);
+
+        const item = document.createElement('div');
+        item.className = 'index-item';
+
+        const name = document.createElement('span');
+        name.className = 'index-name';
+        name.textContent = idx.index_name;
+
+        const colsSpan = document.createElement('span');
+        colsSpan.className = 'index-cols';
+        colsSpan.textContent = ` (${cols})`;
+
+        item.append(name, colsSpan);
+
+        if (isUnique) {
+            const badge = document.createElement('span');
+            badge.className = 'index-badge';
+            badge.textContent = 'UNIQUE';
+            item.appendChild(badge);
+        }
+        if (whereMatch) {
+            const partial = document.createElement('span');
+            partial.className = 'index-partial';
+            partial.textContent = ` WHERE${whereMatch[1]}`;
+            item.appendChild(partial);
+        }
+        container.appendChild(item);
     });
 }
 

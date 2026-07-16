@@ -85,7 +85,7 @@ class IndexHeatmap {
             .text(d => {
                 const total = (d.seq_scans || 0) + (d.index_scans || 0);
                 const indexPct = total > 0 ? ((d.index_scans || 0) / total * 100).toFixed(0) : 0;
-                return `${indexPct}% indexed`;
+                return `${indexPct}% via index`;
             });
 
         // Legend

@@ -89,6 +89,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Serve the live frontend folder (not the copy baked into the image), so the
+    # dashboard on :8000 stays in sync with edits, just like the nginx one on :80.
+    volumes:
+      - ./frontend:/app/frontend:ro
     # Lets DB_HOST=host.docker.internal reach a database on the Docker host (Linux)
     extra_hosts:
       - "host.docker.internal:host-gateway"

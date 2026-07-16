@@ -5,6 +5,7 @@
 
 # Testing
 /coverage
+/scripts
 htmlcov/
 .coverage
 .pytest_cache/

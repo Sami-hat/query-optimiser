@@ -735,7 +735,7 @@ def print_database_stats(conn):
         SELECT
             tablename,
             indexname,
-            pg_size_pretty(pg_relation_size(quote_ident(schemaname) || '.' || quote_ident(indexname))::regclass) as size
+            pg_size_pretty(pg_relation_size((quote_ident(schemaname) || '.' || quote_ident(indexname))::regclass)) as size
         FROM pg_indexes
         WHERE schemaname = 'public'
         ORDER BY tablename, indexname

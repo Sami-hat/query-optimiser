@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PostgreSQL Performance Analyzer</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/styles.css?v=3">
     <script src="/static/js/vendor/d3.v7.min.js"></script>
 </head>
 <body>
@@ -14,6 +14,11 @@
                 <h1>PostgreSQL Performance Analyzer</h1>
                 <p class="subtitle">Query analysis, index recommendations &amp; anti-pattern detection</p>
             </div>
+            <nav class="main-nav">
+                <a href="#analyze">Analyze</a>
+                <a href="#tables">Tables</a>
+                <a href="#batch">Batch</a>
+            </nav>
             <div class="status-indicator" id="status">
                 <span class="status-dot"></span>
                 <span class="status-text">Connecting...</span>
@@ -22,7 +27,7 @@
 
         <main>
             <!-- Query Input Section -->
-            <section class="query-section">
+            <section class="query-section" id="analyze">
                 <h2>Analyze Query</h2>
                 <div class="query-input-wrapper">
                     <textarea id="query-input" spellcheck="false" placeholder="Enter your SQL query here...
@@ -89,7 +94,7 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
             </section>
 
             <!-- Tables Overview Section -->
-            <section class="tables-section">
+            <section class="tables-section" id="tables">
                 <div class="section-header">
                     <h2>Table Statistics</h2>
                     <button id="refresh-tables" class="btn secondary">Refresh</button>
@@ -99,7 +104,7 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
             </section>
 
             <!-- Batch Analysis Section -->
-            <section class="batch-section">
+            <section class="batch-section" id="batch">
                 <h2>Batch Analysis</h2>
                 <div class="batch-input-wrapper">
                     <textarea id="batch-queries" spellcheck="false" placeholder="Enter multiple queries (one per line)..."></textarea>
@@ -138,9 +143,9 @@ Example: SELECT * FROM users WHERE email = 'test@example.com'"></textarea>
         <p>Analyzing...</p>
     </div>
 
-    <script src="/static/js/api.js"></script>
-    <script src="/static/js/flamegraph.js"></script>
-    <script src="/static/js/heatmap.js"></script>
-    <script src="/static/js/main.js"></script>
+    <script src="/static/js/api.js?v=3"></script>
+    <script src="/static/js/flamegraph.js?v=3"></script>
+    <script src="/static/js/heatmap.js?v=3"></script>
+    <script src="/static/js/main.js?v=3"></script>
 </body>
 </html>
